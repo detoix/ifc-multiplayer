@@ -26,27 +26,39 @@ export const Pointer3D = ({ position, direction, label, color }: Pointer3DProps)
 
   return (
     <group ref={groupRef}>
-      {/* Camera/Head representation */}
+      {/* Camera/Head representation - 2x larger */}
       <mesh>
-        <boxGeometry args={[0.3, 0.2, 0.4]} />
-        <meshStandardMaterial color={color} />
+        <boxGeometry args={[2.4, 1.6, 3.2]} />
+        <meshStandardMaterial color={color} metalness={0.5} roughness={0.3} />
       </mesh>
       
-      {/* Lens/Direction indicator */}
-      <mesh position={[0, 0, 0.25]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.1, 0.1, 0.1, 16]} />
+      {/* Lens/Direction indicator - 2x larger */}
+      <mesh position={[0, 0, 2]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.7, 0.7, 0.8, 16]} />
         <meshStandardMaterial color="black" />
       </mesh>
 
-      {/* Frustum visualization (transparent cone) */}
-      <mesh position={[0, 0, 1]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.5, 1.5, 4, 1, true]} />
-        <meshBasicMaterial color={color} transparent opacity={0.1} wireframe />
+      {/* Direction arrow/ray - 2x larger */}
+      <mesh position={[0, 0, 6]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.16, 0.16, 8, 8]} />
+        <meshBasicMaterial color={color} transparent opacity={0.6} />
+      </mesh>
+
+      {/* Arrow tip - 2x larger */}
+      <mesh position={[0, 0, 10.4]} rotation={[Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[0.6, 1.6, 8]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+
+      {/* Frustum visualization (transparent cone) - 2x larger */}
+      <mesh position={[0, 0, 5]} rotation={[-Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[3.0, 8, 4, 1, true]} />
+        <meshBasicMaterial color={color} transparent opacity={0.15} wireframe />
       </mesh>
       
       {/* Label */}
       <Html
-        position={[0, 0.4, 0]}
+        position={[0, 1.2, 0]}
         center
         distanceFactor={10}
         style={{
