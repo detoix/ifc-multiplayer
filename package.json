@@ -1,0 +1,36 @@
+{
+  "name": "ifc-presence-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node --compiler-options '{\"module\":\"commonjs\"}' server.ts",
+    "build": "next build",
+    "start": "NODE_ENV=production ts-node --compiler-options '{\"module\":\"commonjs\"}' server.ts",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@react-three/drei": "^9.98.0",
+    "@react-three/fiber": "^8.15.16",
+    "@types/multer": "^2.0.0",
+    "@types/serve-static": "^2.2.0",
+    "multer": "^2.0.2",
+    "next": "^14.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-dropzone": "^14.2.3",
+    "serve-static": "^2.2.0",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "three": "^0.165.0",
+    "three-stdlib": "^2.30.2",
+    "ts-node": "^10.9.2",
+    "web-ifc": "^0.0.57",
+    "web-ifc-three": "^0.0.126"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.4"
+  }
+}
