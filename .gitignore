@@ -34,3 +34,9 @@ next-env.d.ts
 
 # uploads (IFC files)
 uploads/
+
+# ephemeral state
+room-state.json
+
+# generated wasm
+public/wasm/

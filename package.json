@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "NODE_ENV=production ts-node --compiler-options '{\"module\":\"commonjs\"}' server.ts",
     "lint": "next lint",
-    "postinstall": "mkdir -p public/wasm && cp node_modules/web-ifc/web-ifc.wasm public/wasm/"
+    "postinstall": "mkdir -p public/wasm && (cp node_modules/web-ifc-three/node_modules/web-ifc/web-ifc.wasm public/wasm/ 2>/dev/null || cp node_modules/web-ifc/web-ifc.wasm public/wasm/)"
   },
   "dependencies": {
     "@react-three/drei": "^9.98.0",
