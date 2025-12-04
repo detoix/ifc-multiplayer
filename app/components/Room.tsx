@@ -22,7 +22,11 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
   const roomId = useMemo(() => {
     if (initialRoomId) return initialRoomId;
     if (typeof window === "undefined") return "default-room";
-    return pathname?.replaceAll("/", "-") || "root";
+    // Handle root path specifically
+    if (!pathname || pathname === "/") return "default-room";
+    // Remove leading slash if present, then replace slashes with dashes
+    const path = pathname.startsWith("/") ? pathname.slice(1) : pathname;
+    return path.replaceAll("/", "-") || "default-room";
   }, [initialRoomId, pathname]);
 
   useEffect(() => {

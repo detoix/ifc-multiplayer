@@ -17,8 +17,9 @@ const IfcModel = ({ url }: { url: string }) => {
     console.log("Starting IFC load for:", url);
 
     const loader = new IFCLoader();
-    // Ensure WASM path is correct. It should point to the directory containing web-ifc.wasm
-    loader.ifcManager.setWasmPath("/wasm/");
+    // Ensure WASM path is correct using absolute URL to avoid relative path issues
+    const wasmPath = typeof window !== 'undefined' ? `${window.location.origin}/wasm/` : "/wasm/";
+    loader.ifcManager.setWasmPath(wasmPath);
     
     loader.load(
       url,
