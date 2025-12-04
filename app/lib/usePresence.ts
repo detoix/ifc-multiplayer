@@ -96,20 +96,6 @@ export const usePresence = (roomId: string, label: string | null) => {
     channel.bind("user-left", handleUserLeft);
 
     return () => {
-      // Notify others that this user has left the room
-      const myId = getClientId();
-      if (myId !== "server") {
-        fetch("/api/pusher", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            channel: channelName,
-            event: "user-left",
-            data: { senderId: myId }
-          })
-        }).catch(console.error);
-      }
-
       channel.unbind("pointer-update", handlePointerUpdate);
       channel.unbind("user-left", handleUserLeft);
       pusherInstance?.unsubscribe(channelName);
