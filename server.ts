@@ -31,7 +31,8 @@ app.prepare().then(() => {
     const io = new Server(httpServer);
 
     const DB_FILE = path.join(process.cwd(), 'room-state.json');
-    let roomFiles = new Map<string, { fileUrl: string, filename: string }>();
+    let roomFiles = new Map<string, { fileUrl: string, filename: string, filePath: string }>();
+    const roomOccupancy = new Map<string, number>();
 
     // Load state from disk
     try {
@@ -57,6 +58,28 @@ app.prepare().then(() => {
         }
     };
 
+    const cleanupRoom = (roomId: string) => {
+        const roomFile = roomFiles.get(roomId);
+        if (roomFile) {
+            console.log(`Cleaning up room ${roomId}: deleting ${roomFile.filename}`);
+
+            // Delete the physical file
+            try {
+                if (fs.existsSync(roomFile.filePath)) {
+                    fs.unlinkSync(roomFile.filePath);
+                    console.log(`Deleted file: ${roomFile.filePath}`);
+                }
+            } catch (err) {
+                console.error(`Failed to delete file ${roomFile.filePath}:`, err);
+            }
+
+            // Remove from state
+            roomFiles.delete(roomId);
+            saveState();
+            console.log(`Room ${roomId} cleaned up`);
+        }
+    };
+
     // Set up HTTP request handler
     httpServer.on('request', async (req: any, res: any) => {
         try {
@@ -79,11 +102,12 @@ app.prepare().then(() => {
                     }
                     const roomId = (req as any).body?.roomId || 'default-room';
                     const fileUrl = `/uploads/${file.filename}`;
+                    const filePath = path.join(process.cwd(), 'uploads', file.filename);
 
                     console.log(`File uploaded for room ${roomId}: ${file.originalname}`);
 
                     // Store file info for the room
-                    roomFiles.set(roomId, { fileUrl, filename: file.originalname });
+                    roomFiles.set(roomId, { fileUrl, filename: file.originalname, filePath });
                     saveState();
 
                     // Broadcast to all clients in the room via Socket.IO
@@ -179,7 +203,11 @@ app.prepare().then(() => {
 
         socket.on("join-room", (roomId: string) => {
             socket.join(roomId);
-            console.log(`Socket ${socket.id} joined room ${roomId}`);
+
+            // Track occupancy
+            const currentCount = roomOccupancy.get(roomId) || 0;
+            roomOccupancy.set(roomId, currentCount + 1);
+            console.log(`Socket ${socket.id} joined room ${roomId} (occupancy: ${currentCount + 1})`);
 
             // Send current file if exists
             const roomFile = roomFiles.get(roomId);
@@ -199,6 +227,19 @@ app.prepare().then(() => {
             for (const room of socket.rooms) {
                 if (room !== socket.id) {
                     socket.to(room).emit("user-disconnected", socket.id);
+
+                    // Decrease occupancy
+                    const currentCount = roomOccupancy.get(room) || 0;
+                    const newCount = Math.max(0, currentCount - 1);
+
+                    if (newCount === 0) {
+                        console.log(`Room ${room} is now empty, cleaning up...`);
+                        roomOccupancy.delete(room);
+                        cleanupRoom(room);
+                    } else {
+                        roomOccupancy.set(room, newCount);
+                        console.log(`Room ${room} occupancy decreased to ${newCount}`);
+                    }
                 }
             }
         });
