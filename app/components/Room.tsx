@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import { usePresence } from "@/app/lib/usePresence";
@@ -18,11 +18,12 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
 
   const [label, setLabel] = useState<string | null>(null);
 
+  const pathname = usePathname();
   const roomId = useMemo(() => {
     if (initialRoomId) return initialRoomId;
     if (typeof window === "undefined") return "default-room";
-    return window.location.pathname.replaceAll("/", "-") || "root";
-  }, [initialRoomId]);
+    return pathname?.replaceAll("/", "-") || "root";
+  }, [initialRoomId, pathname]);
 
   useEffect(() => {
     setLabel(randomLabel());
