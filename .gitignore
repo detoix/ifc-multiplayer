@@ -37,6 +37,3 @@ uploads/
 
 # ephemeral state
 room-state.json
-
-# generated wasm
-public/wasm/
