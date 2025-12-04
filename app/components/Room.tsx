@@ -32,7 +32,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
   useEffect(() => {
     setLabel(randomLabel());
   }, []);
-  const { pointers, clientId, color, updatePosition, socket } = usePresence(roomId, label);
+  const { pointers, clientId, color, updatePosition } = usePresence(roomId, label);
   const router = useRouter();
 
   const handleFiles = useCallback(async (files: File[]) => {
@@ -97,9 +97,20 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
       .catch(err => console.error('Failed to fetch room file:', err));
   }, [roomId]);
 
-  // Listen for file uploads from other clients
+  // Listen for file uploads from other clients via Pusher
   useEffect(() => {
-    if (!socket) return;
+    if (typeof window === 'undefined') return;
+    
+    const PusherClient = require('pusher-js');
+    const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+    if (!key || !cluster) return;
+    
+    // Use existing global instance or create new one
+    const pusher = (window as any).__pusherInstance || new PusherClient(key, { cluster });
+    (window as any).__pusherInstance = pusher;
+    
+    const channel = pusher.subscribe(`room-${roomId}`);
     
     const handleFileUploaded = ({ fileUrl, filename }: { fileUrl: string; filename: string }) => {
       console.log('File uploaded by another user:', filename);
@@ -107,12 +118,12 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
       setFileName(filename);
     };
     
-    socket.on('file-uploaded', handleFileUploaded);
+    channel.bind('file-uploaded', handleFileUploaded);
     
     return () => {
-      socket.off('file-uploaded', handleFileUploaded);
+      channel.unbind('file-uploaded', handleFileUploaded);
     };
-  }, [socket]);
+  }, [roomId]);
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop: handleFiles,

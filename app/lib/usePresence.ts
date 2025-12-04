@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { io, Socket } from "socket.io-client";
+import React, { useEffect, useRef, useState } from "react";
+import PusherClient from "pusher-js";
 
 export type PointerPayload = {
   position: [number, number, number]; // Camera position
@@ -22,17 +22,21 @@ const getClientId = () => {
   return id;
 };
 
+// Module-level singleton - only created once
+let pusherInstance: PusherClient | null = null;
+
 export const usePresence = (roomId: string, label: string | null) => {
   const [clientId, setClientId] = useState<string | null>(null);
 
   useEffect(() => {
     setClientId(getClientId());
   }, []);
+
   const [color, setColor] = useState("#a855f7"); // Default color
   const [pointers, setPointers] = useState<PresenceMap>({});
-  const socketRef = useRef<Socket | null>(null);
   const lastSent = useRef(0);
   const pointerRef = useRef<PointerPayload>({ position: [0, 0, 0], direction: [0, 0, -1], color: "#a855f7", label: label || "" });
+  const channelRef = useRef<any>(null);
 
   useEffect(() => {
     if (label) {
@@ -48,36 +52,54 @@ export const usePresence = (roomId: string, label: string | null) => {
   }, []);
 
   useEffect(() => {
-    // Initialize socket connection
-    const socket = io();
-    socketRef.current = socket;
-    (window as any).__socket = socket; // Expose for file sync
+    if (typeof window === "undefined") return;
 
-    socket.on("connect", () => {
-      console.log("Connected to websocket", socket.id);
-      // Clear pointers on reconnect to avoid stale state
-      setPointers({});
-      socket.emit("join-room", roomId);
-    });
+    // Create singleton Pusher instance
+    if (!pusherInstance) {
+      const key = process.env.NEXT_PUBLIC_PUSHER_KEY;
+      const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+      if (!key || !cluster) {
+        console.warn("Pusher credentials not configured");
+        return;
+      }
+      pusherInstance = new PusherClient(key, { cluster });
+    }
 
-    socket.on("pointer-update", ({ clientId: remoteId, pointer }: { clientId: string; pointer: PointerPayload }) => {
+    const channelName = `room-${roomId}`;
+    const channel = pusherInstance.subscribe(channelName);
+    channelRef.current = channel;
+
+    console.log("Subscribed to Pusher channel:", channelName);
+
+    // Handle pointer updates from other users
+    const handlePointerUpdate = ({ senderId, pointer }: { senderId: string; pointer: PointerPayload }) => {
+      // Ignore our own updates
+      const myId = getClientId();
+      if (senderId === myId) return;
+
       setPointers((prev) => ({
         ...prev,
-        [remoteId]: pointer
+        [senderId]: pointer
       }));
-    });
+    };
 
-    socket.on("user-disconnected", (remoteId: string) => {
+    // Handle user leaving
+    const handleUserLeft = ({ senderId }: { senderId: string }) => {
       setPointers((prev) => {
         const next = { ...prev };
-        delete next[remoteId];
+        delete next[senderId];
         return next;
       });
-    });
+    };
+
+    channel.bind("pointer-update", handlePointerUpdate);
+    channel.bind("user-left", handleUserLeft);
 
     return () => {
-      socket.disconnect();
-      setPointers({}); // Clear pointers on unmount/disconnect
+      channel.unbind("pointer-update", handlePointerUpdate);
+      channel.unbind("user-left", handleUserLeft);
+      pusherInstance?.unsubscribe(channelName);
+      setPointers({});
     };
   }, [roomId]);
 
@@ -89,10 +111,20 @@ export const usePresence = (roomId: string, label: string | null) => {
     pointerRef.current.position = position;
     pointerRef.current.direction = direction;
 
-    if (socketRef.current) {
-      socketRef.current.emit("pointer-update", { roomId, pointer: pointerRef.current });
-    }
+    const myClientId = getClientId();
+    if (myClientId === "server") return;
+
+    // Send via API route
+    fetch("/api/pusher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: `room-${roomId}`,
+        event: "pointer-update",
+        data: { senderId: myClientId, pointer: pointerRef.current }
+      })
+    }).catch(console.error);
   }, [roomId]);
 
-  return { pointers, clientId, color, updatePosition, socket: socketRef.current } as const;
+  return { pointers, clientId, color, updatePosition } as const;
 };

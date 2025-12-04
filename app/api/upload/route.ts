@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
+import pusher from '@/app/lib/pusher';
 
 export async function POST(request: NextRequest) {
     try {
@@ -17,6 +18,12 @@ export async function POST(request: NextRequest) {
         });
 
         console.log(`Uploaded file to Vercel Blob: ${blob.url} for room ${roomId}`);
+
+        // Notify all clients in the room via Pusher
+        await pusher.trigger(`room-${roomId}`, 'file-uploaded', {
+            fileUrl: blob.url,
+            filename: file.name
+        });
 
         return NextResponse.json({
             fileUrl: blob.url,
