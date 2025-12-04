@@ -1,34 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { put } from '@vercel/blob';
 
 export async function POST(request: NextRequest) {
     try {
         const data = await request.formData();
         const file: File | null = data.get('file') as unknown as File;
-        const roomId = data.get('roomId') as string;
+        const roomId = data.get('roomId') as string || 'default-room';
 
         if (!file) {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
         }
 
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
+        // Upload to Vercel Blob
+        const blob = await put(`${roomId}/${Date.now()}-${file.name}`, file, {
+            access: 'public',
+        });
 
-        // Use /tmp for Vercel compatibility (ephemeral)
-        const uploadDir = tmpdir();
-        const uniqueName = `${Date.now()}-${file.name}`;
-        const filePath = join(uploadDir, uniqueName);
-
-        await writeFile(filePath, buffer);
-        console.log(`Uploaded file to ${filePath} for room ${roomId}`);
-
-        // Note: This state is not shared with other requests in serverless
-        // This is just to prevent the 405 error and allow the client to proceed
+        console.log(`Uploaded file to Vercel Blob: ${blob.url} for room ${roomId}`);
 
         return NextResponse.json({
-            fileUrl: `/api/file/${uniqueName}`,
+            fileUrl: blob.url,
             filename: file.name
         });
     } catch (error) {
