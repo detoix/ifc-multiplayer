@@ -30,6 +30,33 @@ app.prepare().then(() => {
     const httpServer = createServer();
     const io = new Server(httpServer);
 
+    const DB_FILE = path.join(process.cwd(), 'room-state.json');
+    let roomFiles = new Map<string, { fileUrl: string, filename: string }>();
+
+    // Load state from disk
+    try {
+        console.log('Loading DB from:', DB_FILE);
+        if (fs.existsSync(DB_FILE)) {
+            const data = fs.readFileSync(DB_FILE, 'utf8');
+            roomFiles = new Map(JSON.parse(data));
+            console.log('Loaded room state from disk:', roomFiles.size, 'rooms');
+        } else {
+            console.log('No DB file found, starting empty');
+        }
+    } catch (e) {
+        console.error('Failed to load room state:', e);
+    }
+
+    const saveState = () => {
+        try {
+            console.log('Saving room state to disk...');
+            fs.writeFileSync(DB_FILE, JSON.stringify(Array.from(roomFiles.entries())));
+            console.log('Saved room state');
+        } catch (e) {
+            console.error('Failed to save room state:', e);
+        }
+    };
+
     // Set up HTTP request handler
     httpServer.on('request', async (req: any, res: any) => {
         try {
@@ -53,6 +80,12 @@ app.prepare().then(() => {
                     const roomId = (req as any).body?.roomId || 'default-room';
                     const fileUrl = `/uploads/${file.filename}`;
 
+                    console.log(`File uploaded for room ${roomId}: ${file.originalname}`);
+
+                    // Store file info for the room
+                    roomFiles.set(roomId, { fileUrl, filename: file.originalname });
+                    saveState();
+
                     // Broadcast to all clients in the room via Socket.IO
                     io.to(roomId).emit('file-uploaded', { fileUrl, filename: file.originalname });
 
@@ -63,10 +96,35 @@ app.prepare().then(() => {
                 return;
             }
 
+            // Handle getting room file
+            if (req.method === 'GET' && parsedUrl.pathname === '/api/room-file') {
+                const roomId = parsedUrl.query.roomId as string;
+                console.log(`API Request: Get file for room ${roomId}`);
+
+                if (!roomId) {
+                    res.statusCode = 400;
+                    res.end(JSON.stringify({ error: 'roomId required' }));
+                    return;
+                }
+
+                const roomFile = roomFiles.get(roomId);
+                if (roomFile) {
+                    console.log(`Found file for room ${roomId}: ${roomFile.filename}`);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.statusCode = 200;
+                    res.end(JSON.stringify(roomFile));
+                } else {
+                    console.log(`No file found for room ${roomId}`);
+                    res.statusCode = 404;
+                    res.end(JSON.stringify({ error: 'No file found for this room' }));
+                }
+                return;
+            }
+
             // Serve uploaded files
             if (parsedUrl.pathname?.startsWith('/uploads/')) {
                 const filename = parsedUrl.pathname.replace('/uploads/', '');
-                const filePath = path.join(__dirname, 'uploads', filename);
+                const filePath = path.join(process.cwd(), 'uploads', filename);
 
                 fs.readFile(filePath, (err: any, data: any) => {
                     if (err) {
@@ -85,7 +143,7 @@ app.prepare().then(() => {
 
             // Handle WASM file requests - both direct and via _next
             if (parsedUrl.pathname?.includes('web-ifc.wasm')) {
-                const wasmPath = path.join(__dirname, 'public', 'wasm', 'web-ifc.wasm');
+                const wasmPath = path.join(process.cwd(), 'public', 'wasm', 'web-ifc.wasm');
 
                 fs.readFile(wasmPath, (err: any, data: any) => {
                     if (err) {
@@ -122,6 +180,12 @@ app.prepare().then(() => {
         socket.on("join-room", (roomId: string) => {
             socket.join(roomId);
             console.log(`Socket ${socket.id} joined room ${roomId}`);
+
+            // Send current file if exists
+            const roomFile = roomFiles.get(roomId);
+            if (roomFile) {
+                socket.emit('file-uploaded', roomFile);
+            }
         });
 
         socket.on("pointer-update", (data: any) => {

@@ -84,5 +84,5 @@ export const usePresence = (roomId: string, label: string) => {
     }
   }, [roomId]);
 
-  return { pointers, clientId, color, updatePosition } as const;
+  return { pointers, clientId, color, updatePosition, socket: socketRef.current } as const;
 };
