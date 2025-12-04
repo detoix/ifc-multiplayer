@@ -16,13 +16,17 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
 
+  const [label, setLabel] = useState<string | null>(null);
+
   const roomId = useMemo(() => {
     if (initialRoomId) return initialRoomId;
     if (typeof window === "undefined") return "default-room";
     return window.location.pathname.replaceAll("/", "-") || "root";
   }, [initialRoomId]);
 
-  const [label] = useState(() => randomLabel());
+  useEffect(() => {
+    setLabel(randomLabel());
+  }, []);
   const { pointers, clientId, color, updatePosition, socket } = usePresence(roomId, label);
   const router = useRouter();
 

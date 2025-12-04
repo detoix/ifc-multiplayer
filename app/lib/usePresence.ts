@@ -22,13 +22,23 @@ const getClientId = () => {
   return id;
 };
 
-export const usePresence = (roomId: string, label: string) => {
-  const clientId = useMemo(getClientId, []);
+export const usePresence = (roomId: string, label: string | null) => {
+  const [clientId, setClientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setClientId(getClientId());
+  }, []);
   const [color, setColor] = useState("#a855f7"); // Default color
   const [pointers, setPointers] = useState<PresenceMap>({});
   const socketRef = useRef<Socket | null>(null);
   const lastSent = useRef(0);
-  const pointerRef = useRef<PointerPayload>({ position: [0, 0, 0], direction: [0, 0, -1], color: "#a855f7", label });
+  const pointerRef = useRef<PointerPayload>({ position: [0, 0, 0], direction: [0, 0, -1], color: "#a855f7", label: label || "" });
+
+  useEffect(() => {
+    if (label) {
+      pointerRef.current.label = label;
+    }
+  }, [label]);
 
   // Set random color on client only to avoid hydration mismatch
   useEffect(() => {
