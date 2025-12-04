@@ -77,7 +77,7 @@ export default function Home() {
     };
   }, [clientId]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop: handleFiles,
     onDropAccepted: handleFiles,
     multiple: false,
@@ -85,18 +85,10 @@ export default function Home() {
       const reason = rejections[0]?.errors?.[0]?.message ?? "File rejected.";
       setDropError(`${reason} Try selecting the file manually.`);
     },
-    noClick: false,
+    noClick: true, // Disable click on container, use button instead
     noKeyboard: false,
     accept: undefined // allow any file; IFCs often come with uncommon MIME types
   });
-
-  const onManualSelect = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files ? Array.from(event.target.files) : [];
-      handleFiles(files);
-    },
-    [handleFiles]
-  );
 
   useEffect(() => {
     return () => {
@@ -116,18 +108,24 @@ export default function Home() {
           {dropError ? (
             <p style={{ marginTop: 8, color: "#f97316" }}>{dropError}</p>
           ) : null}
-          <label style={{ marginTop: 10, display: "inline-flex", gap: 8, alignItems: "center", color: "#cbd5e1", fontSize: 13 }}>
-            <span style={{ padding: "6px 10px", border: "1px solid var(--border)", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+          <div style={{ marginTop: 10, display: "inline-flex", gap: 8, alignItems: "center", color: "#cbd5e1", fontSize: 13 }}>
+            <button 
+              type="button"
+              onClick={open}
+              style={{ 
+                padding: "6px 10px", 
+                border: "1px solid var(--border)", 
+                borderRadius: 8, 
+                background: "rgba(255,255,255,0.04)",
+                color: "inherit",
+                font: "inherit",
+                cursor: "pointer"
+              }}
+            >
               Browse IFC
-            </span>
-            <input
-              type="file"
-              accept=".ifc"
-              onChange={onManualSelect}
-              style={{ display: "none" }}
-            />
+            </button>
             <span>Click if drag/drop fails.</span>
-          </label>
+          </div>
         </div>
 
         <div style={{ marginTop: 16, position: "relative" }}>

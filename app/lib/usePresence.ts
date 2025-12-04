@@ -45,6 +45,8 @@ export const usePresence = (roomId: string, label: string) => {
 
     socket.on("connect", () => {
       console.log("Connected to websocket", socket.id);
+      // Clear pointers on reconnect to avoid stale state
+      setPointers({});
       socket.emit("join-room", roomId);
     });
 
@@ -55,8 +57,17 @@ export const usePresence = (roomId: string, label: string) => {
       }));
     });
 
+    socket.on("user-disconnected", (remoteId: string) => {
+      setPointers((prev) => {
+        const next = { ...prev };
+        delete next[remoteId];
+        return next;
+      });
+    });
+
     return () => {
       socket.disconnect();
+      setPointers({}); // Clear pointers on unmount/disconnect
     };
   }, [roomId]);
 

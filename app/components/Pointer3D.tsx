@@ -15,11 +15,12 @@ export const Pointer3D = ({ position, direction, label, color }: Pointer3DProps)
 
   useFrame(() => {
     if (groupRef.current) {
-      // Smoothly interpolate position
-      groupRef.current.position.lerp(new THREE.Vector3(...position), 0.2);
+      // Smoothly interpolate position with slower lerp for less jitter
+      groupRef.current.position.lerp(new THREE.Vector3(...position), 0.08);
       
-      // Orient towards the look direction
-      const target = new THREE.Vector3(...position).add(new THREE.Vector3(...direction));
+      // Orient towards the look direction using CURRENT position (not target position)
+      // This prevents orientation drift during position interpolation
+      const target = groupRef.current.position.clone().add(new THREE.Vector3(...direction));
       groupRef.current.lookAt(target);
     }
   });

@@ -131,6 +131,14 @@ app.prepare().then(() => {
             socket.to(roomId).emit("pointer-update", { clientId: socket.id, pointer });
         });
 
+        socket.on("disconnecting", () => {
+            for (const room of socket.rooms) {
+                if (room !== socket.id) {
+                    socket.to(room).emit("user-disconnected", socket.id);
+                }
+            }
+        });
+
         socket.on("disconnect", () => {
             console.log("Client disconnected", socket.id);
         });
