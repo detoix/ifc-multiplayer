@@ -9,8 +9,14 @@ import * as THREE from "three";
 import { Pointer3D } from "./Pointer3D";
 import type { PresenceMap } from "../lib/usePresence";
 
-const IfcModel = ({ url, onStoriesLoaded, selectedStory }: { url: string, onStoriesLoaded: (stories: any[]) => void, selectedStory: any | null }) => {
+const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelect }: { 
+  url: string, 
+  onStoriesLoaded: (stories: any[]) => void, 
+  selectedStory: any | null,
+  onSelect: (props: any) => void 
+}) => {
   const [displayModel, setDisplayModel] = useState<THREE.Object3D | null>(null);
+  const [highlightModel, setHighlightModel] = useState<THREE.Object3D | null>(null);
   const modelRef = useRef<any>(null);
   const loaderRef = useRef<IFCLoader | null>(null);
   const storiesRef = useRef<any[]>([]);
@@ -153,8 +159,74 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory }: { url: string, onStor
 
   }, [selectedStory]);
 
+  const handlePointerDown = async (event: any) => {
+    // Only handle primary clicks
+    if (event.button !== 0) return;
+    
+    // Check if we hit the model
+    const intersection = event.intersections.find((i: any) => i.object === event.object);
+    if (!intersection) return;
+
+    const loader = loaderRef.current;
+    if (!loader) return;
+
+    // Get express ID
+    const index = intersection.faceIndex;
+    if (index === undefined) return;
+
+    const modelId = event.object.modelID;
+    if (modelId === undefined) return;
+
+    const expressId = loader.ifcManager.getExpressId(
+      event.object.geometry, 
+      index
+    );
+
+    if (expressId) {
+       console.log("Selected ID:", expressId);
+       
+       // Get properties
+       const props = await loader.ifcManager.getItemProperties(modelId, expressId);
+       console.log("Selected Props:", props);
+       onSelect(props);
+
+       // Create highlight subset
+       // We use a custom ID for the highlight subset to distinguish it
+       const highlight = loader.ifcManager.createSubset({
+         modelID: modelId,
+         ids: [expressId],
+         material: new THREE.MeshLambertMaterial({ 
+             color: 0xff00ff, 
+             depthTest: false,
+             transparent: true,
+             opacity: 0.5 
+         }),
+         scene: undefined,
+         removePrevious: true,
+         customID: "highlight-subset"
+       });
+       
+       if (highlight) {
+           // Ensure it renders on top
+           (highlight as any).renderOrder = 1;
+           setHighlightModel(highlight as any);
+       }
+    }
+  };
+
   if (!displayModel) return null;
-  return <primitive object={displayModel} />;
+  return (
+    <group>
+        <primitive 
+            object={displayModel} 
+            onPointerDown={(e: any) => {
+                e.stopPropagation();
+                handlePointerDown(e);
+            }}
+        />
+        {highlightModel && <primitive object={highlightModel} />}
+    </group>
+  );
 };
 
 // ... (CameraTracker remains the same) ...
@@ -207,6 +279,7 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStory, setSelectedStory] = useState<any | null>(null);
+  const [selectedProps, setSelectedProps] = useState<any | null>(null);
 
   // Reset stories when file changes
   useEffect(() => {
@@ -243,6 +316,7 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
                     url={fileUrl} 
                     onStoriesLoaded={setStories} 
                     selectedStory={selectedStory}
+                    onSelect={setSelectedProps}
                 />
             ) : null}
           </Center>
@@ -251,6 +325,63 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
         <Grid args={[100, 100]} cellColor="#1f2937" sectionColor="#334155" fadeDistance={50} />
         <OrbitControls enableDamping makeDefault />
       </Canvas>
+      
+      {/* Selection Info */}
+      {selectedProps && (
+        <div style={{
+            position: 'absolute',
+            top: 20,
+            left: 20,
+            zIndex: 10,
+            background: 'rgba(0,0,0,0.8)',
+            padding: '12px',
+            borderRadius: '8px',
+            backdropFilter: 'blur(4px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: 'white',
+            maxWidth: '300px',
+            fontFamily: 'monospace'
+        }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '14px' }}>
+                    Selection
+                </h3>
+                <button 
+                  onClick={() => setSelectedProps(null)}
+                  style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}
+                >
+                  ×
+                </button>
+            </div>
+            
+            <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                 <div style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    <div style={{ color: '#888', fontSize: '10px' }}>NAME</div>
+                    {selectedProps.Name?.value || "Unnamed"}
+                 </div>
+                 <div style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    <div style={{ color: '#888', fontSize: '10px' }}>TYPE</div>
+                    {selectedProps.ObjectType?.value || "Unknown"}
+                 </div>
+                 <div style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    <div style={{ color: '#888', fontSize: '10px' }}>ID</div>
+                    {selectedProps.GlobalId?.value || selectedProps.expressID}
+                 </div>
+                 
+                 {/* Raw props for debugging */}
+                 <details style={{ marginTop: '8px' }}>
+                     <summary style={{ fontSize: '10px', color: '#666', cursor: 'pointer' }}>Raw Data</summary>
+                     <pre style={{ fontSize: '10px', overflow: 'auto', marginTop: '4px' }}>
+                         {JSON.stringify(selectedProps, (key, value) => {
+                             if (key === 'ownerHistory' || key === 'Placement' || key === 'RelatingType') return undefined; // simplify
+                             if (value && value.type && value.value) return value.value;
+                             return value;
+                         }, 2)}
+                     </pre>
+                 </details>
+            </div>
+        </div>
+      )}
       
       {/* Story Dropdown */}
       {stories.length > 0 && (

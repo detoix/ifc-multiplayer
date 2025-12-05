@@ -21,23 +21,33 @@ const getColorForId = (id: string) => {
     return COLORS[index];
 };
 
-// Simple 3D noise-like movement using sine waves with different frequencies
-const getPosition = (time: number, offset: number): [number, number, number] => {
-    const t = time * 0.0005; // Slow down time
-    const x = Math.sin(t + offset) * 15 + Math.cos(t * 0.5 + offset) * 5;
-    const y = 10 + Math.sin(t * 0.3 + offset) * 5; // Height varies between 5 and 15
-    const z = Math.cos(t + offset) * 15 + Math.sin(t * 0.7 + offset) * 5;
+// Chaotic but deterministic 3D movement based on wall-clock time.
+// Using Date.now means all clients see the same motion for a given bot.
+const getPosition = (timeMs: number, offset: number): [number, number, number] => {
+    const t = timeMs * 0.001; // seconds
+    const x =
+        Math.sin(t + offset) * 18 +
+        Math.cos(t * 0.7 + offset * 0.3) * 7 +
+        Math.sin(t * 1.3 + offset * 0.5) * 3;
+    const y =
+        8 +
+        Math.sin(t * 1.1 + offset) * 6 +
+        Math.cos(t * 0.4 + offset * 0.2) * 2;
+    const z =
+        Math.cos(t + offset * 0.8) * 18 +
+        Math.sin(t * 0.9 + offset * 0.6) * 7;
     return [x, y, z];
 };
 
-const getDirection = (time: number, offset: number): [number, number, number] => {
-    const t = time * 0.0005;
-    // Look roughly towards center (0,0,0) but with some variation
-    const x = -Math.sin(t + offset);
-    const y = -0.5;
-    const z = -Math.cos(t + offset);
-    // Normalize roughly
-    const len = Math.sqrt(x * x + y * y + z * z);
+const getDirection = (timeMs: number, offset: number): [number, number, number] => {
+    const t = timeMs * 0.001;
+    // Look roughly toward origin but wobble a bit over time
+    const baseX = -Math.sin(t + offset * 0.5);
+    const baseZ = -Math.cos(t + offset * 0.5);
+    const x = baseX + Math.sin(t * 1.7 + offset) * 0.3;
+    const y = -0.4 + Math.sin(t * 0.9 + offset) * 0.2;
+    const z = baseZ + Math.cos(t * 1.3 + offset) * 0.3;
+    const len = Math.sqrt(x * x + y * y + z * z) || 1;
     return [x / len, y / len, z / len];
 };
 
@@ -54,7 +64,7 @@ export const useFakePresence = () => {
         let animationFrameId: number;
 
         const update = () => {
-            const now = performance.now();
+            const now = Date.now();
             const newPointers: PresenceMap = {};
 
             usersRef.current.forEach(user => {
@@ -78,7 +88,7 @@ export const useFakePresence = () => {
         };
 
         // Initialize next name change times
-        const now = performance.now();
+        const now = Date.now();
         usersRef.current.forEach(user => {
             if (user.nextNameChange === 0) {
                 user.nextNameChange = now + 300000 + Math.random() * 300000;

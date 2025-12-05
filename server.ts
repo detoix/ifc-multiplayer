@@ -5,7 +5,6 @@ const { Server } = require("socket.io");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const Pusher = require("pusher");
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -30,121 +29,6 @@ const handle = app.getRequestHandler();
 app.prepare().then(() => {
     const httpServer = createServer();
     const io = new Server(httpServer);
-
-    // Optional: server-driven demo bots powered by Pusher
-    let demoBotsInterval: NodeJS.Timer | null = null;
-    let demoRoomActiveUntil = 0;
-    const DEMO_ROOM_ACTIVITY_TIMEOUT_MS = 15000;
-
-    if (
-        process.env.PUSHER_APP_ID &&
-        process.env.PUSHER_KEY &&
-        process.env.PUSHER_SECRET &&
-        process.env.PUSHER_CLUSTER
-    ) {
-        const pusherBots = new Pusher({
-            appId: process.env.PUSHER_APP_ID,
-            key: process.env.PUSHER_KEY,
-            secret: process.env.PUSHER_SECRET,
-            cluster: process.env.PUSHER_CLUSTER,
-            useTLS: true
-        });
-
-        const COLORS = ["#a855f7", "#22d3ee", "#f59e0b", "#ef4444", "#10b981", "#3b82f6"];
-
-        const getColorForId = (id: string) => {
-            let hash = 0;
-            for (let i = 0; i < id.length; i++) {
-                hash = (hash * 31 + id.charCodeAt(i)) | 0;
-            }
-            const index = Math.abs(hash) % COLORS.length;
-            return COLORS[index];
-        };
-
-        // Slightly more chaotic 3D path using multiple frequencies
-        const getPosition = (timeMs: number, offset: number): [number, number, number] => {
-            const t = timeMs * 0.001; // faster than client fake presence
-            const x =
-                Math.sin(t + offset) * 18 +
-                Math.cos(t * 0.7 + offset * 0.3) * 7 +
-                Math.sin(t * 1.3 + offset * 0.5) * 3;
-            const y =
-                8 +
-                Math.sin(t * 1.1 + offset) * 6 +
-                Math.cos(t * 0.4 + offset * 0.2) * 2;
-            const z =
-                Math.cos(t + offset * 0.8) * 18 +
-                Math.sin(t * 0.9 + offset * 0.6) * 7;
-            return [x, y, z];
-        };
-
-        const getDirection = (timeMs: number, offset: number): [number, number, number] => {
-            const t = timeMs * 0.001;
-            // Look roughly toward origin but wobble a bit over time
-            const baseX = -Math.sin(t + offset * 0.5);
-            const baseZ = -Math.cos(t + offset * 0.5);
-            const x = baseX + Math.sin(t * 1.7 + offset) * 0.3;
-            const y = -0.4 + Math.sin(t * 0.9 + offset) * 0.2;
-            const z = baseZ + Math.cos(t * 1.3 + offset) * 0.3;
-            const len = Math.sqrt(x * x + y * y + z * z) || 1;
-            return [x / len, y / len, z / len];
-        };
-
-        const bots = [
-            { id: "bot-architect", offset: 0, name: "Architect AI", color: getColorForId("bot-architect") },
-            { id: "bot-engineer", offset: 800, name: "Engineer AI", color: getColorForId("bot-engineer") }
-        ];
-
-        const demoChannel = "room-demo";
-
-        // Announce bots as joined in the demo room
-        bots.forEach((bot) => {
-            pusherBots
-                .trigger(demoChannel, "user-joined", {
-                    senderId: bot.id,
-                    name: bot.name,
-                    color: bot.color
-                })
-                .catch((err: any) => {
-                    console.error("Failed to send bot join event:", err);
-                });
-        });
-
-        // Periodically update bot pointers so all clients see the same motion
-        demoBotsInterval = setInterval(() => {
-            const now = Date.now();
-            // Only emit bot updates if the demo room has had activity recently
-            if (now > demoRoomActiveUntil) {
-                return;
-            }
-
-            bots.forEach((bot) => {
-                const position = getPosition(now, bot.offset);
-                const direction = getDirection(now, bot.offset);
-                const pointer = {
-                    position,
-                    direction,
-                    color: bot.color,
-                    label: bot.name
-                };
-
-                pusherBots
-                    .trigger(demoChannel, "pointer-update", {
-                        senderId: bot.id,
-                        pointer
-                    })
-                    .catch((err: any) => {
-                        console.error("Failed to send bot pointer update:", err);
-                    });
-            });
-        }, 250);
-
-        process.on("exit", () => {
-            if (demoBotsInterval) clearInterval(demoBotsInterval as any);
-        });
-    } else {
-        console.warn("Pusher env vars missing – server-driven demo bots are disabled.");
-    }
 
     const DB_FILE = path.join(process.cwd(), 'room-state.json');
     let roomFiles = new Map<string, { fileUrl: string, filename: string, filePath: string }>();
@@ -200,21 +84,6 @@ app.prepare().then(() => {
     httpServer.on('request', async (req: any, res: any) => {
         try {
             const parsedUrl = parse(req.url!, true);
-
-            // Demo keepalive: demo clients ping this periodically so
-            // server-driven bots only move when someone is watching.
-            if (parsedUrl.pathname === '/api/demo-keepalive') {
-                const isActive = parsedUrl.query.active !== "false";
-                if (isActive) {
-                    demoRoomActiveUntil = Date.now() + DEMO_ROOM_ACTIVITY_TIMEOUT_MS;
-                } else {
-                    demoRoomActiveUntil = 0;
-                }
-                res.setHeader('Content-Type', 'application/json');
-                res.statusCode = 200;
-                res.end(JSON.stringify({ ok: true }));
-                return;
-            }
 
             // Handle file upload
             if (req.method === 'POST' && parsedUrl.pathname === '/api/upload') {
