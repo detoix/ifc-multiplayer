@@ -18,7 +18,7 @@ export function DemoRoom() {
 
   // Real users (observers)
   // We use a static room ID "demo" for all real users to see each other
-  const { pointers: realPointers, updatePosition } = usePresence("demo", identity);
+  const { pointers: realPointers, updatePosition, events } = usePresence("demo", identity);
 
   // Merge pointers
   const pointers = useMemo(() => ({
@@ -104,6 +104,16 @@ export function DemoRoom() {
         <div style={{ marginTop: 12 }}>
           <small>The other users in this room are simulated AI agents demonstrating the multiplayer capabilities.</small>
         </div>
+        {events.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <small>Activity</small>
+            <ul style={{ margin: "4px 0 0", paddingLeft: 16, fontSize: 12, color: "#94a3b8" }}>
+              {events.slice(-3).map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </aside>
       <JoinDialog onJoin={setIdentity} />
     </div>

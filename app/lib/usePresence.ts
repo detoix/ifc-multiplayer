@@ -26,6 +26,7 @@ let pusherInstance: PusherClient | null = null;
 
 export const usePresence = (roomId: string, identity: UserIdentity | null) => {
   const [pointers, setPointers] = useState<PresenceMap>({});
+  const [events, setEvents] = useState<string[]>([]);
   const lastSent = useRef(0);
 
   // Initialize pointer ref with identity if available, otherwise defaults
@@ -37,6 +38,8 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
   });
 
   const channelRef = useRef<any>(null);
+  const hasAnnouncedLeaveRef = useRef(false);
+  const hasSentInitialPointerRef = useRef(false);
 
   // Update pointer ref when identity changes
   useEffect(() => {
@@ -64,6 +67,18 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     const channelName = `room-${roomId}`;
     const channel = pusherInstance.subscribe(channelName);
     channelRef.current = channel;
+    hasAnnouncedLeaveRef.current = false;
+
+    // Announce that we joined the room so others know immediately
+    fetch("/api/pusher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: channelName,
+        event: "user-joined",
+        data: { senderId: identity.id, name: identity.name, color: identity.color }
+      })
+    }).catch(console.error);
 
     // Handle pointer updates from other users
     const handlePointerUpdate = ({ senderId, pointer }: { senderId: string; pointer: PointerPayload }) => {
@@ -80,21 +95,104 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     const handleUserLeft = ({ senderId }: { senderId: string }) => {
       setPointers((prev) => {
         const next = { ...prev };
+        const label = next[senderId]?.label || prev[senderId]?.label;
         delete next[senderId];
+        if (label) {
+          setEvents((prevEvents) => [...prevEvents.slice(-4), `${label} left the room`]);
+        }
         return next;
       });
     };
 
+    // Handle user joining
+    const handleUserJoined = ({ senderId, name }: { senderId: string; name: string }) => {
+      if (senderId === identity.id) return;
+      setEvents((prev) => [...prev.slice(-4), `${name} joined the room`]);
+    };
+
     channel.bind("pointer-update", handlePointerUpdate);
     channel.bind("user-left", handleUserLeft);
+    channel.bind("user-joined", handleUserJoined);
 
     return () => {
       channel.unbind("pointer-update", handlePointerUpdate);
       channel.unbind("user-left", handleUserLeft);
+      channel.unbind("user-joined", handleUserJoined);
       pusherInstance?.unsubscribe(channelName);
       setPointers({});
     };
   }, [roomId, identity]);
+
+  // As soon as we have an identity, send one pointer update so
+  // others can see our camera even if we never move it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!identity) return;
+    if (hasSentInitialPointerRef.current) return;
+
+    hasSentInitialPointerRef.current = true;
+
+    fetch("/api/pusher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: `room-${roomId}`,
+        event: "pointer-update",
+        data: { senderId: identity.id, pointer: pointerRef.current }
+      })
+    }).catch(console.error);
+  }, [roomId, identity]);
+
+  // Helper to announce that we are leaving the room (route change, tab close, etc.)
+  const announceLeave = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!identity) return;
+    if (hasAnnouncedLeaveRef.current) return;
+    hasAnnouncedLeaveRef.current = true;
+
+    const channelName = `room-${roomId}`;
+    const payload = {
+      channel: channelName,
+      event: "user-left",
+      data: { senderId: identity.id }
+    };
+
+    try {
+      const body = JSON.stringify(payload);
+      const url = "/api/pusher";
+
+      if (navigator.sendBeacon) {
+        const blob = new Blob([body], { type: "application/json" });
+        navigator.sendBeacon(url, blob);
+      } else {
+        fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: true
+        }).catch(console.error);
+      }
+    } catch (e) {
+      console.error("Failed to announce leave", e);
+    }
+  }, [roomId, identity]);
+
+  // Announce leave on unmount / dependency change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!identity) return;
+
+    const handleBeforeUnload = () => {
+      announceLeave();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      announceLeave();
+    };
+  }, [announceLeave, identity]);
 
   const updatePosition = React.useCallback((position: [number, number, number], direction: [number, number, number]) => {
     pointerRef.current.position = position;
@@ -114,5 +212,5 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     }).catch(console.error);
   }, [roomId, identity]);
 
-  return { pointers, updatePosition } as const;
+  return { pointers, updatePosition, events } as const;
 };
