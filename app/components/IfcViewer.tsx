@@ -7,21 +7,23 @@ import { IFCLoader } from "web-ifc-three/IFCLoader";
 import type { Group } from "three";
 import * as THREE from "three";
 import { Pointer3D } from "./Pointer3D";
-import type { PresenceMap } from "../lib/usePresence";
+import type { PresenceMap, SelectionMap } from "../lib/usePresence";
 
-const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelect }: { 
+const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, selections }: { 
   url: string, 
   onStoriesLoaded: (stories: any[]) => void, 
   selectedStory: any | null,
-  onSelect: (props: any) => void 
+  onSelectionChange: (id: number | null, props?: any) => void,
+  selections: SelectionMap
 }) => {
   const [displayModel, setDisplayModel] = useState<THREE.Object3D | null>(null);
-  const [highlightModel, setHighlightModel] = useState<THREE.Object3D | null>(null);
   const modelRef = useRef<any>(null);
   const loaderRef = useRef<IFCLoader | null>(null);
   const storiesRef = useRef<any[]>([]);
   const { scene: threeScene } = useThree();
+  const activeSelectionSubsetsRef = useRef<{ customID: string; material: THREE.Material }[]>([]);
 
+  // Handle multiplayer selections
   useEffect(() => {
     if (!url) return;
     console.log("Starting IFC load for:", url);
@@ -86,78 +88,64 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelect }: {
       setDisplayModel(null);
       modelRef.current = null;
     };
-  }, [url, onStoriesLoaded]);
+  }, [url]);
 
-  // Handle filtering
+  // Handle multiplayer selections (one active selection per user)
   useEffect(() => {
-    const loader = loaderRef.current;
-    const model = modelRef.current;
-    if (!loader || !model) return;
+      const loader = loaderRef.current;
+      const model = modelRef.current;
+      if (!loader || !model) return;
 
-    const filter = async () => {
-      if (!selectedStory) {
-        // Show full model
-        loader.ifcManager.removeSubset(model.modelID, undefined, "custom-subset");
-        setDisplayModel(model);
-        return;
-      }
+      console.log("[IfcModel] selections map", selections);
 
-      // Filter by story
-      // Find all stories <= selected story
-      const visibleStories = storiesRef.current.filter(s => s.elevation <= selectedStory.elevation);
-      const visibleStoryIds = new Set(visibleStories.map(s => s.expressID));
+      // Clear all previously active selection subsets so we never
+      // accumulate stale highlights across updates.
+      activeSelectionSubsetsRef.current.forEach(({ customID, material }) => {
+        try {
+          console.log("[IfcModel] removeSubset", { customID, materialUUID: material.uuid });
+          loader.ifcManager.removeSubset(model.modelID, material, customID);
+        } catch (e) {
+          // Ignore removal errors; subset may already be gone
+        }
+      });
+      activeSelectionSubsetsRef.current = [];
 
-      // We need to find all elements that are children of these stories
-      const ifcProject = await loader.ifcManager.getSpatialStructure(model.modelID);
-      const subsetIds: number[] = [];
+      const userIds = Object.keys(selections);
 
-      const collectStoryItems = (node: any) => {
-         if (visibleStoryIds.has(node.expressID)) {
-             // This is a visible story, collect all its descendants
-             const collectDescendants = (n: any) => {
-                 if (n.children && n.children.length > 0) {
-                     n.children.forEach(collectDescendants);
-                 } else {
-                     // Leaf, assume it's an element
-                     subsetIds.push(n.expressID);
-                 }
-             };
-             if (node.children) node.children.forEach(collectDescendants);
-         } else if (node.children) {
-             node.children.forEach(collectStoryItems);
-         }
-      };
-      
-      collectStoryItems(ifcProject);
+      userIds.forEach((userId) => {
+        const sel = selections[userId];
+        const customID = `select-${userId}`;
 
-      if (subsetIds.length > 0) {
-          const subset = loader.ifcManager.createSubset({
-              modelID: model.modelID,
-              ids: subsetIds,
-              scene: undefined, // We don't want to add it to scene automatically, we'll render it via primitive
-              removePrevious: true,
-              customID: "custom-subset"
-          });
-          
-          // Setup shadows for subset
-           if (subset) {
-            (subset as any).traverse((child: any) => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                }
-            });
-            setDisplayModel(subset as any);
-           }
-      } else {
-          // Nothing visible?
-          setDisplayModel(null);
-      }
-    };
+        console.log("[IfcModel] createSubset", {
+          userId,
+          customID,
+          expressId: sel?.expressId,
+          color: sel?.color
+        });
 
-    filter();
+        if (!sel || !sel.expressId) {
+          return;
+        }
 
-  }, [selectedStory]);
+        const material = new THREE.MeshLambertMaterial({
+          color: sel.color,
+          depthTest: false,
+          transparent: true,
+          opacity: 0.5
+        });
+
+        loader.ifcManager.createSubset({
+          modelID: model.modelID,
+          ids: [sel.expressId],
+          material,
+          scene: threeScene,
+          removePrevious: true,
+          customID
+        });
+
+        activeSelectionSubsetsRef.current.push({ customID, material });
+      });
+  }, [selections, threeScene]);
 
   const handlePointerDown = async (event: any) => {
     // Only handle primary clicks
@@ -165,7 +153,11 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelect }: {
     
     // Check if we hit the model
     const intersection = event.intersections.find((i: any) => i.object === event.object);
-    if (!intersection) return;
+    if (!intersection) {
+        // Clicked on nothing? Deselect?
+        // Let's assume background click is handled by parent or different handler if we want deselect
+        return;
+    }
 
     const loader = loaderRef.current;
     if (!loader) return;
@@ -182,35 +174,12 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelect }: {
       index
     );
 
-    if (expressId) {
+    if (expressId !== undefined) {
        console.log("Selected ID:", expressId);
        
        // Get properties
        const props = await loader.ifcManager.getItemProperties(modelId, expressId);
-       console.log("Selected Props:", props);
-       onSelect(props);
-
-       // Create highlight subset
-       // We use a custom ID for the highlight subset to distinguish it
-       const highlight = loader.ifcManager.createSubset({
-         modelID: modelId,
-         ids: [expressId],
-         material: new THREE.MeshLambertMaterial({ 
-             color: 0xff00ff, 
-             depthTest: false,
-             transparent: true,
-             opacity: 0.5 
-         }),
-         scene: undefined,
-         removePrevious: true,
-         customID: "highlight-subset"
-       });
-       
-       if (highlight) {
-           // Ensure it renders on top
-           (highlight as any).renderOrder = 1;
-           setHighlightModel(highlight as any);
-       }
+       onSelectionChange(expressId, props);
     }
   };
 
@@ -224,7 +193,6 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelect }: {
                 handlePointerDown(e);
             }}
         />
-        {highlightModel && <primitive object={highlightModel} />}
     </group>
   );
 };
@@ -271,10 +239,12 @@ const CameraTracker = ({ onUpdate }: { onUpdate: (pos: [number, number, number],
   return null;
 };
 
-export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: { 
+export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, onSelectionChange }: { 
   fileUrl: string | null;
   pointers: PresenceMap;
   onCameraUpdate: (pos: [number, number, number], dir: [number, number, number]) => void;
+  selections?: SelectionMap;
+  onSelectionChange?: (id: number | null) => void;
 }) => {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [stories, setStories] = useState<any[]>([]);
@@ -292,6 +262,12 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
       <Canvas 
         shadows 
         dpr={[1, 1.5]}
+        onPointerMissed={(event) => {
+          // Primary button click on empty space => unselect
+          if (event.button !== 0) return;
+          onSelectionChange?.(null);
+          setSelectedProps(null);
+        }}
       >
         <PerspectiveCamera makeDefault position={[20, 20, 20]} fov={50} />
         <ambientLight intensity={0.5} />
@@ -311,12 +287,34 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
 
         <Suspense fallback={null}>
           <Center>
+            {/* Show local selection stats if available, and maybe other users? 
+                Actually for now just showing local selected props would mean fetching them again 
+                OR we could pass them down if we want.
+                
+                For now let's just show a simple "Selection Active" indicator or nothing.
+                If the user wants to see properties, we need to fetch them.
+                
+                Simpler: If selectedProps is state here, we can keep fetching it.
+             */}
+             
+             {/* We need to re-fetch props if we want to show the box when selection comes from prop? 
+                 Actually, let's keep selectedProps local for the "Inspector", but update it when our selection changes.
+             */}
+             
             {fileUrl ? (
                 <IfcModel 
                     url={fileUrl} 
                     onStoriesLoaded={setStories} 
                     selectedStory={selectedStory}
-                    onSelect={setSelectedProps}
+                    onSelectionChange={(id, props) => {
+                        onSelectionChange?.(id);
+                        if (id && props) {
+                            setSelectedProps(props);
+                        } else {
+                            setSelectedProps(null);
+                        }
+                    }}
+                    selections={selections}
                 />
             ) : null}
           </Center>

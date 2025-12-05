@@ -19,7 +19,7 @@ export function DemoRoom() {
 
   // Real users (observers)
   // We use a static room ID "demo" for all real users to see each other
-  const { pointers: realPointers, updatePosition, events } = usePresence("demo", identity);
+  const { pointers: realPointers, selections, updatePosition, updateSelection, events } = usePresence("demo", identity);
 
   // Merge pointers
   const pointers = useMemo(
@@ -88,6 +88,8 @@ export function DemoRoom() {
             fileUrl={fileUrl} 
             pointers={pointers}
             onCameraUpdate={updatePosition}
+            selections={selections}
+            onSelectionChange={updateSelection}
           />
         </div>
       </section>

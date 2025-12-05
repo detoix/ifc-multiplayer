@@ -31,7 +31,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
     return path.replaceAll("/", "-") || "default-room";
   }, [initialRoomId, pathname]);
 
-  const { pointers, updatePosition, events } = usePresence(roomId, identity);
+  const { pointers, selections, updatePosition, updateSelection, events } = usePresence(roomId, identity);
   const router = useRouter();
 
   const handleFiles = useCallback(async (files: File[]) => {
@@ -180,6 +180,8 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
             fileUrl={fileUrl} 
             pointers={pointers}
             onCameraUpdate={updatePosition}
+            selections={selections}
+            onSelectionChange={updateSelection}
           />
         </div>
       </section>

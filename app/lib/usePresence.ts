@@ -10,7 +10,12 @@ export type PointerPayload = {
   color: string;
   label: string;
 };
+export type SelectionPayload = {
+  expressId: number | null;
+  color: string;
+};
 export type PresenceMap = Record<string, PointerPayload>;
+export type SelectionMap = Record<string, SelectionPayload>;
 
 const getClientId = () => {
   if (typeof window === "undefined") return "server";
@@ -26,6 +31,7 @@ let pusherInstance: PusherClient | null = null;
 
 export const usePresence = (roomId: string, identity: UserIdentity | null) => {
   const [pointers, setPointers] = useState<PresenceMap>({});
+  const [selections, setSelections] = useState<SelectionMap>({});
   const [events, setEvents] = useState<string[]>([]);
   const lastSent = useRef(0);
 
@@ -91,6 +97,20 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
       }));
     };
 
+    const handleSelectionUpdate = ({ senderId, selection }: { senderId: string; selection: SelectionPayload }) => {
+      console.log("[handleSelectionUpdate] incoming", {
+        senderId,
+        selection
+      });
+
+      // Track selections for all users, including ourselves, so that
+      // each client has exactly one active highlight per user.
+      setSelections((prev) => ({
+        ...prev,
+        [senderId]: selection
+      }));
+    };
+
     // Handle user leaving
     const handleUserLeft = ({ senderId }: { senderId: string }) => {
       setPointers((prev) => {
@@ -102,6 +122,11 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
         }
         return next;
       });
+      setSelections((prev) => {
+        const next = { ...prev };
+        delete next[senderId];
+        return next;
+      });
     };
 
     // Handle user joining
@@ -111,15 +136,18 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     };
 
     channel.bind("pointer-update", handlePointerUpdate);
+    channel.bind("selection-update", handleSelectionUpdate);
     channel.bind("user-left", handleUserLeft);
     channel.bind("user-joined", handleUserJoined);
 
     return () => {
       channel.unbind("pointer-update", handlePointerUpdate);
+      channel.unbind("selection-update", handleSelectionUpdate);
       channel.unbind("user-left", handleUserLeft);
       channel.unbind("user-joined", handleUserJoined);
       pusherInstance?.unsubscribe(channelName);
       setPointers({});
+      setSelections({});
     };
   }, [roomId, identity]);
 
@@ -212,5 +240,36 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     }).catch(console.error);
   }, [roomId, identity]);
 
-  return { pointers, updatePosition, events } as const;
+  const updateSelection = React.useCallback((expressId: number | null) => {
+    if (!identity) return;
+    const selectionPayload: SelectionPayload = {
+      expressId,
+      color: identity.color
+    };
+
+    console.log("[updateSelection] local", {
+      myId: identity.id,
+      expressId,
+      color: identity.color
+    });
+
+    // Optimistic local update so our own highlight updates immediately
+    // and we maintain exactly one active selection per client.
+    setSelections((prev) => ({
+      ...prev,
+      [identity.id]: selectionPayload
+    }));
+
+    fetch("/api/pusher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: `room-${roomId}`,
+        event: "selection-update",
+        data: { senderId: identity.id, selection: selectionPayload }
+      })
+    }).catch(console.error);
+  }, [roomId, identity]);
+
+  return { pointers, selections, updatePosition, updateSelection, events } as const;
 };

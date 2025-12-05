@@ -223,6 +223,11 @@ app.prepare().then(() => {
             socket.to(roomId).emit("pointer-update", { clientId: socket.id, pointer });
         });
 
+        socket.on("selection-update", (data: any) => {
+            const { roomId, selection } = data;
+            socket.to(roomId).emit("selection-update", { clientId: socket.id, selection });
+        });
+
         socket.on("disconnecting", () => {
             for (const room of socket.rooms) {
                 if (room !== socket.id) {
