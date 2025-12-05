@@ -319,7 +319,7 @@ const FollowController = ({ target, onStopFollowing }: { target: PointerPayload,
 
         // We can just snap for now, or lerp. Snapping is safer for "following" to not get seasick 
         // if the other user teleports. But let's try a quick lerp.
-        camera.position.lerp(targetPos, 0.1);
+        camera.position.lerp(targetPos, 0.5);
         camera.lookAt(targetLookAt);
         camera.updateProjectionMatrix();
 
@@ -345,7 +345,7 @@ const FollowController = ({ target, onStopFollowing }: { target: PointerPayload,
 const PointersLayer = ({ pointers }: { pointers: PresenceMap }) => {
   const { camera } = useThree();
   const camPos = camera.position;
-  const thresholdSq = 25; // hide pointers closer than ~3.2 units
+  const thresholdSq = 50; // hide pointers closer than ~3.2 units
 
   return (
     <>

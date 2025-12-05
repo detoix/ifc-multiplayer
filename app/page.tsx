@@ -1,7 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import { Room } from "@/app/components/Room";
 
 export default function Home() {
-  return <Room />;
+  return (
+    <Suspense fallback={null}>
+      <Room />
+    </Suspense>
+  );
 }
