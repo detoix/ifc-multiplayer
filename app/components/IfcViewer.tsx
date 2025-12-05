@@ -67,31 +67,30 @@ const CameraTracker = ({ onUpdate }: { onUpdate: (pos: [number, number, number],
 
   useFrame(() => {
     const now = performance.now();
-    if (now - lastUpdate.current > 50) { // Throttle to ~20fps
-      
-      const currentPos = camera.position;
-      const currentDir = new THREE.Vector3();
-      camera.getWorldDirection(currentDir);
+    if (now - lastUpdate.current < 200) return; // Throttle to ~5fps
 
-      // Check if changed significantly
-      // Distance squared 0.01 means sqrt(0.01) = 0.1 units
-      // Direction squared 0.01 means roughly 5.7 degrees
-      if (
-        currentPos.distanceToSquared(lastPos.current) < 0.01 &&
-        currentDir.distanceToSquared(lastDir.current) < 0.01
-      ) {
-        return;
-      }
+    const currentPos = camera.position;
+    const currentDir = new THREE.Vector3();
+    camera.getWorldDirection(currentDir);
 
-      lastUpdate.current = now;
-      lastPos.current.copy(currentPos);
-      lastDir.current.copy(currentDir);
-
-      onUpdate(
-        [currentPos.x, currentPos.y, currentPos.z], 
-        [currentDir.x, currentDir.y, currentDir.z]
-      );
+    // Check if changed significantly
+    // Distance squared 0.25 means sqrt(0.25) = 0.5 units
+    // Direction squared 0.05 means roughly 12 degrees
+    if (
+      currentPos.distanceToSquared(lastPos.current) < 0.25 &&
+      currentDir.distanceToSquared(lastDir.current) < 0.05
+    ) {
+      return;
     }
+
+    lastUpdate.current = now;
+    lastPos.current.copy(currentPos);
+    lastDir.current.copy(currentDir);
+
+    onUpdate(
+      [currentPos.x, currentPos.y, currentPos.z], 
+      [currentDir.x, currentDir.y, currentDir.z]
+    );
   });
   return null;
 };

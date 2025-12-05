@@ -69,8 +69,6 @@ export const usePresence = (roomId: string, label: string | null) => {
     const channel = pusherInstance.subscribe(channelName);
     channelRef.current = channel;
 
-    console.log("Subscribed to Pusher channel:", channelName);
-
     // Handle pointer updates from other users
     const handlePointerUpdate = ({ senderId, pointer }: { senderId: string; pointer: PointerPayload }) => {
       // Ignore our own updates
@@ -104,10 +102,6 @@ export const usePresence = (roomId: string, label: string | null) => {
   }, [roomId]);
 
   const updatePosition = React.useCallback((position: [number, number, number], direction: [number, number, number]) => {
-    const now = performance.now();
-    if (now - lastSent.current < 50) return; // Throttle to ~20fps
-    lastSent.current = now;
-
     pointerRef.current.position = position;
     pointerRef.current.direction = direction;
 
