@@ -9,7 +9,17 @@ const FAKE_NAMES = [
 const COLORS = ["#a855f7", "#22d3ee", "#f59e0b", "#ef4444", "#10b981", "#3b82f6"];
 
 const getRandomName = () => FAKE_NAMES[Math.floor(Math.random() * FAKE_NAMES.length)];
-const getRandomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
+
+// Deterministically map an ID to a color so fake users
+// keep the same color across reloads and sessions.
+const getColorForId = (id: string) => {
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+        hash = (hash * 31 + id.charCodeAt(i)) | 0;
+    }
+    const index = Math.abs(hash) % COLORS.length;
+    return COLORS[index];
+};
 
 // Simple 3D noise-like movement using sine waves with different frequencies
 const getPosition = (time: number, offset: number): [number, number, number] => {
@@ -36,8 +46,8 @@ export const useFakePresence = () => {
 
     // Keep track of our fake users
     const usersRef = useRef([
-        { id: "fake-1", offset: 0, color: getRandomColor(), name: getRandomName(), nextNameChange: 0 },
-        { id: "fake-2", offset: 100, color: getRandomColor(), name: getRandomName(), nextNameChange: 0 }
+        { id: "fake-1", offset: 0, color: getColorForId("fake-1"), name: getRandomName(), nextNameChange: 0 },
+        { id: "fake-2", offset: 100, color: getColorForId("fake-2"), name: getRandomName(), nextNameChange: 0 }
     ]);
 
     useEffect(() => {

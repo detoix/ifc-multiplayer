@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { IfcViewer } from "@/app/components/IfcViewer";
-import { useFakePresence } from "@/app/lib/useFakePresence";
 import { usePresence } from "@/app/lib/usePresence";
 
 import { JoinDialog } from "@/app/components/JoinDialog";
@@ -12,19 +11,12 @@ export function DemoRoom() {
   // Load the demo file from the public path
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [identity, setIdentity] = useState<UserIdentity | null>(null);
-  
-  // Fake users (AI agents)
-  const { pointers: fakePointers } = useFakePresence();
 
   // Real users (observers)
   // We use a static room ID "demo" for all real users to see each other
-  const { pointers: realPointers, updatePosition, events } = usePresence("demo", identity);
-
-  // Merge pointers
-  const pointers = useMemo(() => ({
-    ...realPointers,
-    ...fakePointers
-  }), [realPointers, fakePointers]);
+  // This also now includes server-driven AI agents,
+  // which publish pointer updates into the same room.
+  const { pointers, updatePosition, events } = usePresence("demo", identity);
 
   useEffect(() => {
     // Fetch the demo file from blob storage
@@ -46,6 +38,56 @@ export function DemoRoom() {
         console.error('Failed to fetch demo file from API, using local demo:', err);
         setFileUrl('/demo/demo.ifc');
       });
+  }, []);
+
+  // Let the server know the demo room is active so
+  // server-driven bots only move when someone is here.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+
+    const ping = () => {
+      fetch("/api/demo-keepalive?active=true", {
+        method: "POST"
+      }).catch(() => { /* ignore */ });
+    };
+
+    const notifyInactive = () => {
+      const url = "/api/demo-keepalive?active=false";
+      try {
+        if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+          const blob = new Blob([], { type: "application/json" });
+          navigator.sendBeacon(url, blob);
+        } else {
+          fetch(url, {
+            method: "POST",
+            keepalive: true
+          }).catch(() => { /* ignore */ });
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    // Initial ping on mount
+    ping();
+
+    window.addEventListener("beforeunload", notifyInactive);
+    window.addEventListener("pagehide", notifyInactive);
+
+    const id = setInterval(() => {
+      if (cancelled) return;
+      ping();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+       window.removeEventListener("beforeunload", notifyInactive);
+       window.removeEventListener("pagehide", notifyInactive);
+       notifyInactive();
+    };
   }, []);
 
   // We can still allow dropping a file to "preview" the demo experience with a local file
