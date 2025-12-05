@@ -130,6 +130,32 @@ button {
   gap: 20px;
 }
 
+@media (max-width: 900px) {
+  body {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .grid>section {
+    padding: 16px;
+  }
+
+  .sidebar {
+    padding: 16px;
+    gap: 12px;
+    border-left: none;
+  }
+
+  .dropzone {
+    padding: 24px;
+  }
+
+  .canvas-shell {
+    height: 65vh;
+    border-radius: 12px;
+  }
+}
+
 .tag {
   display: inline-flex;
   align-items: center;
