@@ -1,3 +1,5 @@
+ "use client";
+
 import { useEffect, useState, useMemo } from "react";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import { useFakePresence } from "@/app/lib/useFakePresence";
