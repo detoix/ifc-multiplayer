@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import PusherClient from "pusher-js";
+import { UserIdentity } from "./identity";
 
 export type PointerPayload = {
   position: [number, number, number]; // Camera position
@@ -10,8 +11,6 @@ export type PointerPayload = {
   label: string;
 };
 export type PresenceMap = Record<string, PointerPayload>;
-
-const colors = ["#a855f7", "#22d3ee", "#f59e0b", "#ef4444", "#10b981", "#3b82f6"];
 
 const getClientId = () => {
   if (typeof window === "undefined") return "server";
@@ -25,34 +24,31 @@ const getClientId = () => {
 // Module-level singleton - only created once
 let pusherInstance: PusherClient | null = null;
 
-export const usePresence = (roomId: string, label: string | null) => {
-  const [clientId, setClientId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setClientId(getClientId());
-  }, []);
-
-  const [color, setColor] = useState("#a855f7"); // Default color
+export const usePresence = (roomId: string, identity: UserIdentity | null) => {
   const [pointers, setPointers] = useState<PresenceMap>({});
   const lastSent = useRef(0);
-  const pointerRef = useRef<PointerPayload>({ position: [0, 0, 0], direction: [0, 0, -1], color: "#a855f7", label: label || "" });
+
+  // Initialize pointer ref with identity if available, otherwise defaults
+  const pointerRef = useRef<PointerPayload>({
+    position: [0, 0, 0],
+    direction: [0, 0, -1],
+    color: identity?.color || "#a855f7",
+    label: identity?.name || "Anonymous"
+  });
+
   const channelRef = useRef<any>(null);
 
+  // Update pointer ref when identity changes
   useEffect(() => {
-    if (label) {
-      pointerRef.current.label = label;
+    if (identity) {
+      pointerRef.current.color = identity.color;
+      pointerRef.current.label = identity.name;
     }
-  }, [label]);
-
-  // Set random color on client only to avoid hydration mismatch
-  useEffect(() => {
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    setColor(randomColor);
-    pointerRef.current.color = randomColor;
-  }, []);
+  }, [identity]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!identity) return; // Wait for identity
 
     // Create singleton Pusher instance
     if (!pusherInstance) {
@@ -72,8 +68,7 @@ export const usePresence = (roomId: string, label: string | null) => {
     // Handle pointer updates from other users
     const handlePointerUpdate = ({ senderId, pointer }: { senderId: string; pointer: PointerPayload }) => {
       // Ignore our own updates
-      const myId = getClientId();
-      if (senderId === myId) return;
+      if (senderId === identity.id) return;
 
       setPointers((prev) => ({
         ...prev,
@@ -99,14 +94,13 @@ export const usePresence = (roomId: string, label: string | null) => {
       pusherInstance?.unsubscribe(channelName);
       setPointers({});
     };
-  }, [roomId]);
+  }, [roomId, identity]);
 
   const updatePosition = React.useCallback((position: [number, number, number], direction: [number, number, number]) => {
     pointerRef.current.position = position;
     pointerRef.current.direction = direction;
 
-    const myClientId = getClientId();
-    if (myClientId === "server") return;
+    if (!identity) return;
 
     // Send via API route
     fetch("/api/pusher", {
@@ -115,10 +109,10 @@ export const usePresence = (roomId: string, label: string | null) => {
       body: JSON.stringify({
         channel: `room-${roomId}`,
         event: "pointer-update",
-        data: { senderId: myClientId, pointer: pointerRef.current }
+        data: { senderId: identity.id, pointer: pointerRef.current }
       })
     }).catch(console.error);
-  }, [roomId]);
+  }, [roomId, identity]);
 
-  return { pointers, clientId, color, updatePosition } as const;
+  return { pointers, updatePosition } as const;
 };

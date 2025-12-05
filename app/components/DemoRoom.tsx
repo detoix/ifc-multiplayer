@@ -5,16 +5,20 @@ import { IfcViewer } from "@/app/components/IfcViewer";
 import { useFakePresence } from "@/app/lib/useFakePresence";
 import { usePresence } from "@/app/lib/usePresence";
 
+import { JoinDialog } from "@/app/components/JoinDialog";
+import { UserIdentity } from "@/app/lib/identity";
+
 export function DemoRoom() {
   // Load the demo file from the public path
   const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<UserIdentity | null>(null);
   
   // Fake users (AI agents)
   const { pointers: fakePointers } = useFakePresence();
 
   // Real users (observers)
   // We use a static room ID "demo" for all real users to see each other
-  const { pointers: realPointers, updatePosition, color } = usePresence("demo", "Observer");
+  const { pointers: realPointers, updatePosition } = usePresence("demo", identity);
 
   // Merge pointers
   const pointers = useMemo(() => ({
@@ -27,14 +31,21 @@ export function DemoRoom() {
     fetch('/api/room-file?roomId=demo')
       .then(res => {
         if (res.ok) return res.json();
+        // If the API doesn't have a demo file yet, fall back to the bundled demo IFC
         return null;
       })
       .then(data => {
         if (data && data.fileUrl) {
           setFileUrl(data.fileUrl);
+        } else {
+          // Local fallback so the demo always has a model
+          setFileUrl('/demo/demo.ifc');
         }
       })
-      .catch(err => console.error('Failed to fetch demo file:', err));
+      .catch(err => {
+        console.error('Failed to fetch demo file from API, using local demo:', err);
+        setFileUrl('/demo/demo.ifc');
+      });
   }, []);
 
   // We can still allow dropping a file to "preview" the demo experience with a local file
@@ -79,8 +90,8 @@ export function DemoRoom() {
 
       <aside className="sidebar">
         <div className="tag" style={{ marginBottom: 12 }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
-          You (Observer)
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: identity?.color || "#ccc" }} />
+          {identity?.name || "Connecting..."}
         </div>
         <div className="stat">
           <span>Active Users</span>
@@ -94,6 +105,7 @@ export function DemoRoom() {
           <small>The other users in this room are simulated AI agents demonstrating the multiplayer capabilities.</small>
         </div>
       </aside>
+      <JoinDialog onJoin={setIdentity} />
     </div>
   );
 }

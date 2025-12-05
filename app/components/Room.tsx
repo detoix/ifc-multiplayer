@@ -6,6 +6,9 @@ import { useDropzone } from "react-dropzone";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import { usePresence } from "@/app/lib/usePresence";
 
+import { JoinDialog } from "@/app/components/JoinDialog";
+import { UserIdentity } from "@/app/lib/identity";
+
 const randomLabel = () => {
   const names = ["Falcon", "Quartz", "Lyra", "Cobalt", "Nova", "Atlas", "Delta", "Echo"];
   return names[Math.floor(Math.random() * names.length)];
@@ -15,8 +18,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
-
-  const [label, setLabel] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<UserIdentity | null>(null);
 
   const pathname = usePathname();
   const roomId = useMemo(() => {
@@ -29,10 +31,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
     return path.replaceAll("/", "-") || "default-room";
   }, [initialRoomId, pathname]);
 
-  useEffect(() => {
-    setLabel(randomLabel());
-  }, []);
-  const { pointers, clientId, color, updatePosition } = usePresence(roomId, label);
+  const { pointers, updatePosition } = usePresence(roomId, identity);
   const router = useRouter();
 
   const handleFiles = useCallback(async (files: File[]) => {
@@ -187,8 +186,8 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
 
       <aside className="sidebar">
         <div className="tag" style={{ marginBottom: 12 }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
-          {label}
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: identity?.color || "#ccc" }} />
+          {identity?.name || "Connecting..."}
         </div>
         <div className="stat">
           <span>Active pointers</span>
@@ -209,6 +208,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
           <small>Make sure <code>public/wasm/web-ifc.wasm</code> exists. If not, copy it from <code>node_modules/web-ifc/web-ifc.wasm</code>.</small>
         </div>
       </aside>
+      <JoinDialog onJoin={setIdentity} />
     </div>
   );
 }
