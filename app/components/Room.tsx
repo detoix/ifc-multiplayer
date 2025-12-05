@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import { usePresence } from "@/app/lib/usePresence";
@@ -21,9 +21,9 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
   const [identity, setIdentity] = useState<UserIdentity | null>(null);
-  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
 
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const roomId = useMemo(() => {
     if (initialRoomId) return initialRoomId;
     if (typeof window === "undefined") return "default-room";
@@ -36,6 +36,30 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
 
   const { pointers, selections, messages, updatePosition, updateSelection, sendChatMessage } = usePresence(roomId, identity);
   const router = useRouter();
+
+  // Current follow target is encoded in the URL as ?follow=<username>
+  const followName = searchParams?.get("follow") || null;
+
+  // Helper to update the follow query param (single source of truth)
+  const setFollowParam = useCallback((name: string | null) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (name) {
+      url.searchParams.set("follow", name);
+    } else {
+      url.searchParams.delete("follow");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }, []);
+
+  // Resolve follow target label to a concrete pointer ID when that user appears
+  const followingUserId = useMemo(() => {
+    if (!followName) return null;
+    const entry = Object.entries(pointers).find(([_, p]) =>
+      p.label === followName || p.label.toLowerCase() === followName.toLowerCase()
+    );
+    return entry ? entry[0] : null;
+  }, [followName, pointers]);
 
   const handleSendMessage = useCallback((text: string) => {
     const trimmed = text.trim();
@@ -55,21 +79,13 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
         );
         
         if (targetEntry) {
-          setFollowingUserId(targetEntry[0]);
+          setFollowParam(targetEntry[1].label);
         }
         return; // Consume the command so it doesn't send as chat
       }
     }
     sendChatMessage(text);
-  }, [pointers, sendChatMessage]);
-
-  // If the followed user leaves the room, stop following automatically
-  useEffect(() => {
-    if (!followingUserId) return;
-    if (!pointers[followingUserId]) {
-      setFollowingUserId(null);
-    }
-  }, [followingUserId, pointers]);
+  }, [pointers, sendChatMessage, setFollowParam]);
 
   const handleFiles = useCallback(async (files: File[]) => {
     if (!files.length) {
@@ -220,7 +236,9 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
             selections={selections}
             onSelectionChange={updateSelection}
             followingUserId={followingUserId}
-            onStopFollowing={() => setFollowingUserId(null)}
+            onStopFollowing={() => {
+              setFollowParam(null);
+            }}
           />
         </div>
       </section>
@@ -259,12 +277,47 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
         <div style={{ marginTop: 12 }}>
           <small>Make sure <code>public/wasm/web-ifc.wasm</code> exists. If not, copy it from <code>node_modules/web-ifc/web-ifc.wasm</code>.</small>
         </div>
+        {identity && (
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                try {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("follow", identity.name);
+                  const shareUrl = url.toString();
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(shareUrl).catch(() => {
+                      // ignore clipboard errors silently
+                    });
+                  }
+                  // As a fallback, we could show the URL somewhere in the UI if needed.
+                } catch {
+                  // ignore URL construction errors
+                }
+              }}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "rgba(255,255,255,0.04)",
+                color: "inherit",
+                font: "inherit",
+                cursor: "pointer",
+                fontSize: 12
+              }}
+            >
+              Share “follow me” link
+            </button>
+          </div>
+        )}
         
         <Chat 
-            messages={messages} 
-            onSendMessage={handleSendMessage} 
-            identity={identity} 
-            users={pointers}
+          messages={messages} 
+          onSendMessage={handleSendMessage} 
+          identity={identity} 
+          users={pointers}
         />
 
       </aside>

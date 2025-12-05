@@ -1,6 +1,7 @@
- "use client";
+"use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import { useFakePresence } from "@/app/lib/useFakePresence";
 import { usePresence } from "@/app/lib/usePresence";
@@ -14,7 +15,7 @@ export function DemoRoom() {
   // Load the demo file from the public path
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [identity, setIdentity] = useState<UserIdentity | null>(null);
-  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
   // Fake users (AI agents) simulated purely on the client,
   // but using Date.now so all clients see the same motion.
@@ -33,6 +34,27 @@ export function DemoRoom() {
     [realPointers, fakePointers]
   );
 
+  const followName = searchParams?.get("follow") || null;
+
+  const setFollowParam = useCallback((name: string | null) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (name) {
+      url.searchParams.set("follow", name);
+    } else {
+      url.searchParams.delete("follow");
+    }
+    window.history.replaceState(null, "", url.toString());
+  }, []);
+
+  const followingUserId = useMemo(() => {
+    if (!followName) return null;
+    const entry = Object.entries(pointers).find(([_, p]) =>
+      p.label === followName || p.label.toLowerCase() === followName.toLowerCase()
+    );
+    return entry ? entry[0] : null;
+  }, [followName, pointers]);
+
   const handleSendMessage = useCallback((text: string) => {
     const trimmed = text.trim();
     if (trimmed.startsWith("/")) {
@@ -50,21 +72,13 @@ export function DemoRoom() {
         );
         
         if (targetEntry) {
-          setFollowingUserId(targetEntry[0]);
+          setFollowParam(targetEntry[1].label);
         }
         return; // Consume the command so it doesn't send as chat
       }
     }
     sendChatMessage(text);
-  }, [pointers, sendChatMessage]);
-
-  // If the followed user leaves the room (or fake pointer disappears), stop following automatically
-  useEffect(() => {
-    if (!followingUserId) return;
-    if (!pointers[followingUserId]) {
-      setFollowingUserId(null);
-    }
-  }, [followingUserId, pointers]);
+  }, [pointers, sendChatMessage, setFollowParam]);
 
   useEffect(() => {
     // Fetch the demo file from blob storage
@@ -127,7 +141,9 @@ export function DemoRoom() {
             selections={selections}
             onSelectionChange={updateSelection}
             followingUserId={followingUserId}
-            onStopFollowing={() => setFollowingUserId(null)}
+            onStopFollowing={() => {
+              setFollowParam(null);
+            }}
           />
         </div>
       </section>
@@ -152,19 +168,46 @@ export function DemoRoom() {
             </span>
           </div>
         )}
-        <div className="stat">
-          <span>Mode</span>
-          <code style={{ fontSize: 12 }}>DEMO_SIMULATION</code>
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <small>The other users in this room are simulated AI agents demonstrating the multiplayer capabilities.</small>
-        </div>
+        {identity && (
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window === "undefined") return;
+                try {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("follow", identity.name);
+                  const shareUrl = url.toString();
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(shareUrl).catch(() => {
+                      // ignore clipboard errors silently
+                    });
+                  }
+                } catch {
+                  // ignore URL construction errors
+                }
+              }}
+              style={{
+                padding: "6px 10px",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                background: "rgba(255,255,255,0.04)",
+                color: "inherit",
+                font: "inherit",
+                cursor: "pointer",
+                fontSize: 12
+              }}
+            >
+              Share “follow me” link
+            </button>
+          </div>
+        )}
         
         <Chat 
-            messages={messages} 
-            onSendMessage={handleSendMessage} 
-            identity={identity} 
-            users={pointers}
+          messages={messages} 
+          onSendMessage={handleSendMessage} 
+          identity={identity} 
+          users={pointers}
         />
 
       </aside>

@@ -1,30 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import type { PresenceMap, PointerPayload } from "./usePresence";
 
-const FAKE_NAMES = [
-    "Architect", "Engineer", "Client", "Manager", "Designer",
-    "Consultant", "Viewer", "Guest", "Supervisor", "Director"
+// Fixed fake users with constant names and colors
+const FAKE_USERS = [
+    { id: "fake-1", offset: 0, color: "#22d3ee", label: "Client" },
+    { id: "fake-2", offset: 100, color: "#a855f7", label: "Architect" }
 ];
 
-const COLORS = ["#a855f7", "#22d3ee", "#f59e0b", "#ef4444", "#10b981", "#3b82f6"];
-
-const getRandomName = () => FAKE_NAMES[Math.floor(Math.random() * FAKE_NAMES.length)];
-
-// Deterministically map an ID to a color so fake users
-// keep the same color across reloads and sessions.
-const getColorForId = (id: string) => {
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) {
-        hash = (hash * 31 + id.charCodeAt(i)) | 0;
-    }
-    const index = Math.abs(hash) % COLORS.length;
-    return COLORS[index];
+// Simple deterministic pseudo-random helper (0–1) based on a numeric seed
+const pseudoRandom = (seed: number) => {
+    const x = Math.sin(seed * 12.9898) * 43758.5453;
+    return x - Math.floor(x);
 };
 
-// Chaotic but deterministic 3D movement based on wall-clock time.
-// Using Date.now means all clients see the same motion for a given bot.
+// Determine whether a bot is "idle" (stale) or "moving" for the current time.
+// This is deterministic from wall-clock time + offset so all clients see the same pattern.
+const getMovementPhase = (timeMs: number, offset: number) => {
+    const SEGMENT_MS = 8000; // 8s segments for natural pauses
+    const segmentIndex = Math.floor((timeMs + offset * 500) / SEGMENT_MS);
+    const rand = pseudoRandom(segmentIndex + offset * 0.13);
+    const isIdle = rand < 0.65; // ~65% of the time spent idle
+    const segmentStartTime = segmentIndex * SEGMENT_MS;
+    return { isIdle, segmentStartTime };
+};
+
+// Chaotic but deterministic 3D movement based on wall-clock time,
+// with frequent "stale" periods where bots stop in place.
 const getPosition = (timeMs: number, offset: number): [number, number, number] => {
-    const t = timeMs * 0.001; // seconds
+    const { isIdle, segmentStartTime } = getMovementPhase(timeMs, offset);
+    const effectiveTime = isIdle ? segmentStartTime : timeMs;
+    const t = effectiveTime * 0.001; // seconds
     const x =
         Math.sin(t + offset) * 18 +
         Math.cos(t * 0.7 + offset * 0.3) * 7 +
@@ -40,7 +45,9 @@ const getPosition = (timeMs: number, offset: number): [number, number, number] =
 };
 
 const getDirection = (timeMs: number, offset: number): [number, number, number] => {
-    const t = timeMs * 0.001;
+    const { isIdle, segmentStartTime } = getMovementPhase(timeMs, offset);
+    const effectiveTime = isIdle ? segmentStartTime : timeMs;
+    const t = effectiveTime * 0.001;
     // Look roughly toward origin but wobble a bit over time
     const baseX = -Math.sin(t + offset * 0.5);
     const baseZ = -Math.cos(t + offset * 0.5);
@@ -56,8 +63,7 @@ export const useFakePresence = () => {
 
     // Keep track of our fake users
     const usersRef = useRef([
-        { id: "fake-1", offset: 0, color: getColorForId("fake-1"), name: getRandomName(), nextNameChange: 0 },
-        { id: "fake-2", offset: 100, color: getColorForId("fake-2"), name: getRandomName(), nextNameChange: 0 }
+        ...FAKE_USERS
     ]);
 
     useEffect(() => {
@@ -68,32 +74,17 @@ export const useFakePresence = () => {
             const newPointers: PresenceMap = {};
 
             usersRef.current.forEach(user => {
-                // Name rotation logic
-                if (now > user.nextNameChange) {
-                    user.name = getRandomName();
-                    // Schedule next change in 5-10 minutes (300,000 - 600,000 ms)
-                    user.nextNameChange = now + 300000 + Math.random() * 300000;
-                }
-
                 newPointers[user.id] = {
                     position: getPosition(now, user.offset),
                     direction: getDirection(now, user.offset),
                     color: user.color,
-                    label: user.name
+                    label: user.label
                 };
             });
 
             setPointers(newPointers);
             animationFrameId = requestAnimationFrame(update);
         };
-
-        // Initialize next name change times
-        const now = Date.now();
-        usersRef.current.forEach(user => {
-            if (user.nextNameChange === 0) {
-                user.nextNameChange = now + 300000 + Math.random() * 300000;
-            }
-        });
 
         update();
 

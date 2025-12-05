@@ -61,7 +61,7 @@ export const Pointer3D = ({ position, direction, label, color }: Pointer3DProps)
       <Html
         position={[0, 1.2, 0]}
         center
-        distanceFactor={10}
+        transform={false}
         style={{
           pointerEvents: 'none',
           userSelect: 'none',
@@ -71,9 +71,9 @@ export const Pointer3D = ({ position, direction, label, color }: Pointer3DProps)
           style={{
             background: color,
             color: 'white',
-            padding: '4px 8px',
+            padding: '5px 10px',
             borderRadius: '4px',
-            fontSize: '12px',
+            fontSize: '14px',
             fontWeight: 'bold',
             whiteSpace: 'nowrap',
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
