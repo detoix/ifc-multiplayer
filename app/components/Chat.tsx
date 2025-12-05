@@ -19,8 +19,10 @@ export const Chat = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isFirstRender = useRef(true);
 
   // Derive list of other user names from pointers (users prop) and chat messages.
   // This way autocomplete still works even if the users prop is empty,
@@ -37,7 +39,18 @@ export const Chat = ({
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Constrain scrolling to the chat container only,
+    // so the page itself never scrolls on mobile.
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      // No need to auto-scroll on very first render.
+      return;
+    }
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (!messages.length) return;
+
+    container.scrollTop = container.scrollHeight;
   }, [messages]);
 
   // Handle autocomplete logic
@@ -128,7 +141,9 @@ export const Chat = ({
         Chat
       </div>
       
-      <div style={{ 
+      <div
+        ref={messagesContainerRef}
+        style={{ 
         flex: 1, 
         overflowY: "auto", 
         background: "white", 

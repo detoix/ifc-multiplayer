@@ -129,7 +129,7 @@ export function DemoRoom() {
         >
           <h1 style={{ margin: "0 0 8px", color: "var(--text)" }}>Interactive Demo</h1>
           <p style={{ margin: 0, color: "#94a3b8" }}>
-            This is a simulation with AI agents. Drop an IFC file to see them interact with your model.
+            This is a demo IFC coordination room. You can join with others to explore the model together in real-time.
           </p>
         </div>
 
