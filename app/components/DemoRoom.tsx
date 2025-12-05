@@ -6,7 +6,7 @@ import { useFakePresence } from "@/app/lib/useFakePresence";
 import { usePresence } from "@/app/lib/usePresence";
 
 import { JoinDialog } from "@/app/components/JoinDialog";
-import { UserIdentity } from "@/app/lib/identity";
+import type { UserIdentity } from "@/app/lib/identity";
 
 export function DemoRoom() {
   // Load the demo file from the public path

@@ -7,7 +7,7 @@ import { IfcViewer } from "@/app/components/IfcViewer";
 import { usePresence } from "@/app/lib/usePresence";
 
 import { JoinDialog } from "@/app/components/JoinDialog";
-import { UserIdentity } from "@/app/lib/identity";
+import type { UserIdentity } from "@/app/lib/identity";
 
 const randomLabel = () => {
   const names = ["Falcon", "Quartz", "Lyra", "Cobalt", "Nova", "Atlas", "Delta", "Echo"];

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { UserIdentity, createIdentity, getIdentity, updateIdentity } from "@/app/lib/identity";
+import { createIdentity, getIdentity, updateIdentity } from "@/app/lib/identity";
+import type { UserIdentity } from "@/app/lib/identity";
 
 export function JoinDialog({ onJoin }: { onJoin: (identity: UserIdentity) => void }) {
   const [name, setName] = useState("");

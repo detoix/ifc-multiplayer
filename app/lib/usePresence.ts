@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import PusherClient from "pusher-js";
-import { UserIdentity } from "./identity";
+import type { UserIdentity } from "./identity";
 
 export type PointerPayload = {
   position: [number, number, number]; // Camera position
