@@ -67,7 +67,10 @@ const CameraTracker = ({ onUpdate }: { onUpdate: (pos: [number, number, number],
 
   useFrame(() => {
     const now = performance.now();
-    if (now - lastUpdate.current < 200) return; // Throttle to ~5fps
+    
+    // Force immediate update on first frame
+    const isFirstUpdate = lastUpdate.current === 0;
+    if (!isFirstUpdate && now - lastUpdate.current < 200) return; // Throttle to ~5fps
 
     const currentPos = camera.position;
     const currentDir = new THREE.Vector3();
@@ -142,7 +145,8 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
             alignItems: "center",
             justifyContent: "center",
             color: "#94a3b8",
-            fontSize: 14
+            fontSize: 14,
+            pointerEvents: "none"
           }}
         >
           Drop an IFC to start rendering.
