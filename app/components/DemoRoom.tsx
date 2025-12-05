@@ -6,14 +6,24 @@ import { useFakePresence } from "@/app/lib/useFakePresence";
 
 export function DemoRoom() {
   // Load the demo file from the public path
-  const [fileUrl, setFileUrl] = useState<string | null>("/demo/demo.ifc");
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
   
   // Using the fake presence hook instead of real Pusher presence
   const { pointers } = useFakePresence();
 
   useEffect(() => {
-    // We default to /demo/demo.ifc, but we could also fetch metadata if needed.
-    // For now, we assume the file is served statically at this path.
+    // Fetch the demo file from blob storage
+    fetch('/api/room-file?roomId=demo')
+      .then(res => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then(data => {
+        if (data && data.fileUrl) {
+          setFileUrl(data.fileUrl);
+        }
+      })
+      .catch(err => console.error('Failed to fetch demo file:', err));
   }, []);
 
   // We can still allow dropping a file to "preview" the demo experience with a local file
