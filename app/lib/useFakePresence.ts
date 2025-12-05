@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PresenceMap, PointerPayload } from "./usePresence";
+import type { PresenceMap, PointerPayload } from "./usePresence";
 
 const FAKE_NAMES = [
     "Architect", "Engineer", "Client", "Manager", "Designer",
