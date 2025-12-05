@@ -9,55 +9,156 @@ import * as THREE from "three";
 import { Pointer3D } from "./Pointer3D";
 import type { PresenceMap } from "../lib/usePresence";
 
-const IfcModel = ({ url }: { url: string }) => {
-  const [scene, setScene] = useState<Group | null>(null);
+const IfcModel = ({ url, onStoriesLoaded, selectedStory }: { url: string, onStoriesLoaded: (stories: any[]) => void, selectedStory: any | null }) => {
+  const [displayModel, setDisplayModel] = useState<THREE.Object3D | null>(null);
+  const modelRef = useRef<any>(null);
+  const loaderRef = useRef<IFCLoader | null>(null);
+  const storiesRef = useRef<any[]>([]);
+  const { scene: threeScene } = useThree();
 
   useEffect(() => {
     if (!url) return;
     console.log("Starting IFC load for:", url);
 
     const loader = new IFCLoader();
-    // Use absolute path for WASM - just /wasm/ not full URL
     loader.ifcManager.setWasmPath("/wasm/");
+    loaderRef.current = loader;
     
-    loader.load(
-      url,
-      (g: any) => {
-        console.log("IFC loaded successfully", g);
+    const loadModel = async () => {
+      try {
+        const model = await loader.loadAsync(url) as any;
+        console.log("IFC loaded successfully", model);
+        modelRef.current = model;
         
-        // Calculate bounding box to understand model size
-        const bbox = new THREE.Box3().setFromObject(g);
-        const size = new THREE.Vector3();
-        bbox.getSize(size);
-        console.log("Model bounding box size:", size);
-        console.log("Model center:", bbox.getCenter(new THREE.Vector3()));
-        
-        g.traverse((child: any) => {
+        // Setup shadows
+        model.traverse((child: any) => {
           if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;
           }
         });
-        setScene(g);
-      },
-      (progress: ProgressEvent) => {
-         // console.log("Loading progress:", progress);
-      },
-      (err: unknown) => {
+
+        setDisplayModel(model);
+
+        // Extract stories
+        const ifcProject = await loader.ifcManager.getSpatialStructure(model.modelID);
+        const stories: any[] = [];
+        
+        const findStories = (node: any) => {
+          if (node.type === "IFCBUILDINGSTOREY") {
+            stories.push(node);
+          }
+          if (node.children) {
+            node.children.forEach(findStories);
+          }
+        };
+        
+        findStories(ifcProject);
+
+        // Get elevations for sorting
+        const storiesWithElevation = await Promise.all(stories.map(async (story) => {
+          const props = await loader.ifcManager.getItemProperties(model.modelID, story.expressID);
+          const elevation = props.Elevation?.value || 0;
+          const name = props.Name?.value || story.Name?.value || `Story ${story.expressID}`;
+          const longName = props.LongName?.value;
+          return { ...story, elevation, name: longName || name, modelID: model.modelID };
+        }));
+
+        // Sort descending (highest first) so bottom story is at bottom of list
+        storiesWithElevation.sort((a, b) => b.elevation - a.elevation);
+        storiesRef.current = storiesWithElevation;
+        onStoriesLoaded(storiesWithElevation);
+
+      } catch (err) {
         console.error("IFC load error", err);
       }
-    );
+    };
+
+    loadModel();
 
     return () => {
-      // Cleanup if needed, though disposing the manager might be too aggressive if we want to reuse it
-      // loader.ifcManager.dispose(); 
-      setScene(null);
+      setDisplayModel(null);
+      modelRef.current = null;
     };
-  }, [url]);
+  }, [url, onStoriesLoaded]);
 
-  if (!scene) return null;
-  return <primitive object={scene} />;
+  // Handle filtering
+  useEffect(() => {
+    const loader = loaderRef.current;
+    const model = modelRef.current;
+    if (!loader || !model) return;
+
+    const filter = async () => {
+      if (!selectedStory) {
+        // Show full model
+        loader.ifcManager.removeSubset(model.modelID, undefined, "custom-subset");
+        setDisplayModel(model);
+        return;
+      }
+
+      // Filter by story
+      // Find all stories <= selected story
+      const visibleStories = storiesRef.current.filter(s => s.elevation <= selectedStory.elevation);
+      const visibleStoryIds = new Set(visibleStories.map(s => s.expressID));
+
+      // We need to find all elements that are children of these stories
+      const ifcProject = await loader.ifcManager.getSpatialStructure(model.modelID);
+      const subsetIds: number[] = [];
+
+      const collectStoryItems = (node: any) => {
+         if (visibleStoryIds.has(node.expressID)) {
+             // This is a visible story, collect all its descendants
+             const collectDescendants = (n: any) => {
+                 if (n.children && n.children.length > 0) {
+                     n.children.forEach(collectDescendants);
+                 } else {
+                     // Leaf, assume it's an element
+                     subsetIds.push(n.expressID);
+                 }
+             };
+             if (node.children) node.children.forEach(collectDescendants);
+         } else if (node.children) {
+             node.children.forEach(collectStoryItems);
+         }
+      };
+      
+      collectStoryItems(ifcProject);
+
+      if (subsetIds.length > 0) {
+          const subset = loader.ifcManager.createSubset({
+              modelID: model.modelID,
+              ids: subsetIds,
+              scene: undefined, // We don't want to add it to scene automatically, we'll render it via primitive
+              removePrevious: true,
+              customID: "custom-subset"
+          });
+          
+          // Setup shadows for subset
+           if (subset) {
+            (subset as any).traverse((child: any) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            setDisplayModel(subset as any);
+           }
+      } else {
+          // Nothing visible?
+          setDisplayModel(null);
+      }
+    };
+
+    filter();
+
+  }, [selectedStory]);
+
+  if (!displayModel) return null;
+  return <primitive object={displayModel} />;
 };
+
+// ... (CameraTracker remains the same) ...
+
 
 const CameraTracker = ({ onUpdate }: { onUpdate: (pos: [number, number, number], dir: [number, number, number]) => void }) => {
   const { camera } = useThree();
@@ -104,9 +205,17 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
   onCameraUpdate: (pos: [number, number, number], dir: [number, number, number]) => void;
 }) => {
   const canvasRef = React.useRef<HTMLDivElement>(null);
+  const [stories, setStories] = useState<any[]>([]);
+  const [selectedStory, setSelectedStory] = useState<any | null>(null);
+
+  // Reset stories when file changes
+  useEffect(() => {
+      setStories([]);
+      setSelectedStory(null);
+  }, [fileUrl]);
 
   return (
-    <div className="canvas-shell" ref={canvasRef}>
+    <div className="canvas-shell" ref={canvasRef} style={{ position: 'relative' }}>
       <Canvas 
         shadows 
         dpr={[1, 1.5]}
@@ -129,19 +238,64 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate }: {
 
         <Suspense fallback={null}>
           <Center>
-            {fileUrl ? <IfcModel url={fileUrl} /> : null}
+            {fileUrl ? (
+                <IfcModel 
+                    url={fileUrl} 
+                    onStoriesLoaded={setStories} 
+                    selectedStory={selectedStory}
+                />
+            ) : null}
           </Center>
           <Environment preset="city" />
         </Suspense>
         <Grid args={[100, 100]} cellColor="#1f2937" sectionColor="#334155" fadeDistance={50} />
         <OrbitControls enableDamping makeDefault />
       </Canvas>
+      
+      {/* Story Dropdown */}
+      {stories.length > 0 && (
+        <div style={{
+            position: 'absolute',
+            top: 20,
+            right: 20,
+            zIndex: 10,
+            background: 'rgba(0,0,0,0.8)',
+            padding: '8px',
+            borderRadius: '8px',
+            backdropFilter: 'blur(4px)',
+            border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+            <select 
+                value={selectedStory ? selectedStory.expressID : ""} 
+                onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) setSelectedStory(null);
+                    else setSelectedStory(stories.find(s => s.expressID === Number(id)));
+                }}
+                style={{
+                    background: 'transparent',
+                    color: 'white',
+                    border: 'none',
+                    outline: 'none',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    minWidth: '120px'
+                }}
+            >
+                <option value="" style={{ color: 'black' }}>Whole Building</option>
+                {stories.map(story => (
+                    <option key={story.expressID} value={story.expressID} style={{ color: 'black' }}>
+                        {story.name}
+                    </option>
+                ))}
+            </select>
+        </div>
+      )}
+
       {!fileUrl ? (
         <div
           style={{
             position: "absolute",
-            inset: 0,
-            display: "flex",
             alignItems: "center",
             justifyContent: "center",
             color: "#94a3b8",
