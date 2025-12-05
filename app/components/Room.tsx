@@ -21,6 +21,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
   const [identity, setIdentity] = useState<UserIdentity | null>(null);
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
 
   const pathname = usePathname();
   const roomId = useMemo(() => {
@@ -35,6 +36,40 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
 
   const { pointers, selections, messages, updatePosition, updateSelection, sendChatMessage } = usePresence(roomId, identity);
   const router = useRouter();
+
+  const handleSendMessage = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("/")) {
+      const parts = trimmed.split(" ");
+      const command = parts[0].toLowerCase();
+
+      if (command === "/follow" || command === "/f") {
+        const potentialName = parts.slice(1).join(" ").replace("@", "").trim();
+        if (!potentialName) {
+          console.warn("No username provided to follow.");
+          return;
+        }
+        // Try exact match first, then case-insensitive
+        const targetEntry = Object.entries(pointers).find(([_, p]) => 
+          p.label === potentialName || p.label.toLowerCase() === potentialName.toLowerCase()
+        );
+        
+        if (targetEntry) {
+          setFollowingUserId(targetEntry[0]);
+        }
+        return; // Consume the command so it doesn't send as chat
+      }
+    }
+    sendChatMessage(text);
+  }, [pointers, sendChatMessage]);
+
+  // If the followed user leaves the room, stop following automatically
+  useEffect(() => {
+    if (!followingUserId) return;
+    if (!pointers[followingUserId]) {
+      setFollowingUserId(null);
+    }
+  }, [followingUserId, pointers]);
 
   const handleFiles = useCallback(async (files: File[]) => {
     if (!files.length) {
@@ -184,6 +219,8 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
             onCameraUpdate={updatePosition}
             selections={selections}
             onSelectionChange={updateSelection}
+            followingUserId={followingUserId}
+            onStopFollowing={() => setFollowingUserId(null)}
           />
         </div>
       </section>
@@ -197,6 +234,17 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
           <span>Active pointers</span>
           <strong>{Object.keys(pointers).length}</strong>
         </div>
+        {followingUserId && pointers[followingUserId] && (
+          <div className="stat">
+            <span>Following</span>
+            <span>
+              @{pointers[followingUserId].label}
+              <span style={{ marginLeft: 6, fontSize: 11, color: "#94a3b8" }}>
+                (drag or scroll to stop)
+              </span>
+            </span>
+          </div>
+        )}
         <div className="stat">
           <span>Room</span>
           <code style={{ fontSize: 12 }}>{roomId}</code>
@@ -214,8 +262,9 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
         
         <Chat 
             messages={messages} 
-            onSendMessage={sendChatMessage} 
+            onSendMessage={handleSendMessage} 
             identity={identity} 
+            users={pointers}
         />
 
       </aside>

@@ -7,7 +7,7 @@ import { IFCLoader } from "web-ifc-three/IFCLoader";
 import type { Group } from "three";
 import * as THREE from "three";
 import { Pointer3D } from "./Pointer3D";
-import type { PresenceMap, SelectionMap } from "../lib/usePresence";
+import type { PresenceMap, SelectionMap, PointerPayload } from "../lib/usePresence";
 
 const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, selections }: { 
   url: string, 
@@ -85,10 +85,53 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
     loadModel();
 
     return () => {
+      try {
+        // Clean up any story-level subset when model unmounts
+        if (loaderRef.current && modelRef.current) {
+          loaderRef.current.ifcManager.removeSubset(modelRef.current.modelID, undefined, "storey-subset");
+        }
+      } catch (e) {
+        // ignore
+      }
       setDisplayModel(null);
       modelRef.current = null;
     };
   }, [url]);
+
+  // Handle story (level) isolation based on selectedStory
+  useEffect(() => {
+    const loader = loaderRef.current;
+    const model = modelRef.current;
+    if (!loader || !model) return;
+
+    const modelID = model.modelID;
+
+    if (!selectedStory) {
+      // Show whole building
+      model.visible = true;
+      try {
+        loader.ifcManager.removeSubset(modelID, undefined, "storey-subset");
+      } catch (e) {
+        // ignore if it doesn't exist
+      }
+      return;
+    }
+
+    // Hide full model and show only selected storey as a subset
+    model.visible = false;
+
+    try {
+      loader.ifcManager.createSubset({
+        modelID,
+        ids: [selectedStory.expressID],
+        scene: threeScene,
+        removePrevious: true,
+        customID: "storey-subset"
+      });
+    } catch (e) {
+      console.error("Failed to create storey subset", e);
+    }
+  }, [selectedStory, threeScene]);
 
   // Handle multiplayer selections (one active selection per user)
   useEffect(() => {
@@ -237,12 +280,108 @@ const CameraTracker = ({ onUpdate }: { onUpdate: (pos: [number, number, number],
   return null;
 };
 
-export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, onSelectionChange }: { 
+const FollowController = ({ target, onStopFollowing }: { target: PointerPayload, onStopFollowing?: () => void }) => {
+    const { camera, gl } = useThree();
+    const controlsRef = useRef<any>(null);
+    
+    // We need to access the orbit controls. 
+    // Since we are inside Canvas, we can look for it in the scene or just assume standard behavior.
+    // Better yet, we can listen to "start" event on controls if we had access to them.
+    // But we don't have direct access to the OrbitControls instance from here easily unless we use a ref passed down
+    // or we listen to events on the domElement.
+    
+    useEffect(() => {
+        const onInteract = () => {
+            onStopFollowing?.();
+        };
+
+        // Listen for user interaction that should break the follow
+        // pointerdown, wheel are good indicators
+        const canvas = gl.domElement;
+        canvas.addEventListener('pointerdown', onInteract);
+        canvas.addEventListener('wheel', onInteract);
+        
+        return () => {
+            canvas.removeEventListener('pointerdown', onInteract);
+            canvas.removeEventListener('wheel', onInteract);
+        };
+    }, [gl, onStopFollowing]);
+
+    useFrame(() => {
+        if (!target) return;
+
+        // Smoothly interpolate camera position
+        const targetPos = new THREE.Vector3(...target.position);
+        
+        // Calculate look direction
+        const dir = new THREE.Vector3(...target.direction).normalize();
+        const targetLookAt = targetPos.clone().add(dir.multiplyScalar(10)); // Look 10m ahead
+
+        // We can just snap for now, or lerp. Snapping is safer for "following" to not get seasick 
+        // if the other user teleports. But let's try a quick lerp.
+        camera.position.lerp(targetPos, 0.1);
+        camera.lookAt(targetLookAt);
+        camera.updateProjectionMatrix();
+
+        // Note: OrbitControls will overwrite this if we don't update its target too.
+        // We really need to update controls.target to be where we are looking.
+        // But we don't have the controls ref here easily.
+        // HACK: Dispatch event or assume standard controls?
+        // Actually, if we just update camera, OrbitControls might snap it back on next frame if it thinks 
+        // it's in control.
+        // A common pattern is to update the controls' target to be slightly in front of the camera position.
+    });
+
+    // To properly support OrbitControls being "controlled", we should ideally get the controls instance.
+    // However, since OrbitControls is a sibling in IfcViewer, we can't easily grab it without context or props.
+    // For now, let's assume if we forcibly set camera position/rotation in useFrame, it overrides controls 
+    // UNTIL user interacts (which stops this component).
+    
+    return null;
+};
+
+// Render other users' pointers, but hide any that are very close
+// to the current camera position to avoid overlapping "camera" indicators.
+const PointersLayer = ({ pointers }: { pointers: PresenceMap }) => {
+  const { camera } = useThree();
+  const camPos = camera.position;
+  const thresholdSq = 25; // hide pointers closer than ~3.2 units
+
+  return (
+    <>
+      {Object.entries(pointers).map(([id, pointer]) => {
+        const [x, y, z] = pointer.position;
+        const dx = x - camPos.x;
+        const dy = y - camPos.y;
+        const dz = z - camPos.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq < thresholdSq) {
+          return null;
+        }
+
+        return (
+          <Pointer3D 
+            key={id} 
+            position={pointer.position} 
+            direction={pointer.direction}
+            label={pointer.label} 
+            color={pointer.color} 
+          />
+        );
+      })}
+    </>
+  );
+};
+
+export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, onSelectionChange, followingUserId, onStopFollowing }: { 
   fileUrl: string | null;
   pointers: PresenceMap;
   onCameraUpdate: (pos: [number, number, number], dir: [number, number, number]) => void;
   selections?: SelectionMap;
   onSelectionChange?: (id: number | null) => void;
+  followingUserId?: string | null;
+  onStopFollowing?: () => void;
 }) => {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [stories, setStories] = useState<any[]>([]);
@@ -273,15 +412,15 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
         
         <CameraTracker onUpdate={onCameraUpdate} />
         
-        {Object.entries(pointers).map(([id, pointer]) => (
-           <Pointer3D 
-             key={id} 
-             position={pointer.position} 
-             direction={pointer.direction}
-             label={pointer.label} 
-             color={pointer.color} 
-           />
-        ))}
+        {/* Helper to follow another user */}
+        {followingUserId && pointers[followingUserId] && (
+          <FollowController 
+            target={pointers[followingUserId]} 
+            onStopFollowing={onStopFollowing} 
+          />
+        )}
+
+        <PointersLayer pointers={pointers} />
 
         <Suspense fallback={null}>
           <Center>

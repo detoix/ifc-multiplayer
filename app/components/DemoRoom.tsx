@@ -1,6 +1,6 @@
  "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import { useFakePresence } from "@/app/lib/useFakePresence";
 import { usePresence } from "@/app/lib/usePresence";
@@ -14,6 +14,7 @@ export function DemoRoom() {
   // Load the demo file from the public path
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [identity, setIdentity] = useState<UserIdentity | null>(null);
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
 
   // Fake users (AI agents) simulated purely on the client,
   // but using Date.now so all clients see the same motion.
@@ -31,6 +32,39 @@ export function DemoRoom() {
     }),
     [realPointers, fakePointers]
   );
+
+  const handleSendMessage = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (trimmed.startsWith("/")) {
+      const parts = trimmed.split(" ");
+      const command = parts[0].toLowerCase();
+
+      if (command === "/follow" || command === "/f") {
+        const potentialName = parts.slice(1).join(" ").replace("@", "").trim();
+        if (!potentialName) {
+          return;
+        }
+        // Try exact match first, then case-insensitive
+        const targetEntry = Object.entries(pointers).find(([_, p]) => 
+          p.label === potentialName || p.label.toLowerCase() === potentialName.toLowerCase()
+        );
+        
+        if (targetEntry) {
+          setFollowingUserId(targetEntry[0]);
+        }
+        return; // Consume the command so it doesn't send as chat
+      }
+    }
+    sendChatMessage(text);
+  }, [pointers, sendChatMessage]);
+
+  // If the followed user leaves the room (or fake pointer disappears), stop following automatically
+  useEffect(() => {
+    if (!followingUserId) return;
+    if (!pointers[followingUserId]) {
+      setFollowingUserId(null);
+    }
+  }, [followingUserId, pointers]);
 
   useEffect(() => {
     // Fetch the demo file from blob storage
@@ -92,6 +126,8 @@ export function DemoRoom() {
             onCameraUpdate={updatePosition}
             selections={selections}
             onSelectionChange={updateSelection}
+            followingUserId={followingUserId}
+            onStopFollowing={() => setFollowingUserId(null)}
           />
         </div>
       </section>
@@ -105,6 +141,17 @@ export function DemoRoom() {
           <span>Active Users</span>
           <strong>{Object.keys(pointers).length + 1}</strong>
         </div>
+        {followingUserId && pointers[followingUserId] && (
+          <div className="stat">
+            <span>Following</span>
+            <span>
+              @{pointers[followingUserId].label}
+              <span style={{ marginLeft: 6, fontSize: 11, color: "#94a3b8" }}>
+                (drag or scroll to stop)
+              </span>
+            </span>
+          </div>
+        )}
         <div className="stat">
           <span>Mode</span>
           <code style={{ fontSize: 12 }}>DEMO_SIMULATION</code>
@@ -115,8 +162,9 @@ export function DemoRoom() {
         
         <Chat 
             messages={messages} 
-            onSendMessage={sendChatMessage} 
+            onSendMessage={handleSendMessage} 
             identity={identity} 
+            users={pointers}
         />
 
       </aside>
