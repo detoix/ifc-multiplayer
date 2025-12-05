@@ -202,20 +202,20 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
         <div className="dropzone" {...getRootProps()} style={{ borderColor: isDragActive ? "var(--accent)" : "var(--border)" }}>
           <input {...getInputProps()} />
           <h1 style={{ margin: "0 0 8px", color: "var(--text)" }}>Drop an IFC file</h1>
-          <p style={{ margin: 0, color: "#94a3b8" }}>
+          <p style={{ margin: 0, color: "var(--text-muted)" }}>
             We will load it locally in your browser and share pointer positions through a lightweight webhook.
           </p>
           {dropError ? (
-            <p style={{ marginTop: 8, color: "#f97316" }}>{dropError}</p>
+            <p style={{ marginTop: 8, color: "var(--danger)" }}>{dropError}</p>
           ) : null}
-          <div style={{ marginTop: 10, display: "inline-flex", gap: 8, alignItems: "center", color: "#cbd5e1", fontSize: 13 }}>
+          <div style={{ marginTop: 10, display: "inline-flex", gap: 8, alignItems: "center", color: "var(--text-muted)", fontSize: 13 }}>
             <button 
               type="button"
               onClick={open}
               style={{ 
                 padding: "6px 10px", 
                 border: "1px solid var(--border)", 
-                borderRadius: 8, 
+                borderRadius: 4, 
                 background: "rgba(255,255,255,0.04)",
                 color: "inherit",
                 font: "inherit",
@@ -245,7 +245,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
 
       <aside className="sidebar">
         <div className="tag" style={{ marginBottom: 12 }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: identity?.color || "#ccc" }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: identity?.color || "var(--text-muted)" }} />
           {identity?.name || "Connecting..."}
         </div>
         <div className="stat">
@@ -257,7 +257,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
             <span>Following</span>
             <span>
               @{pointers[followingUserId].label}
-              <span style={{ marginLeft: 6, fontSize: 11, color: "#94a3b8" }}>
+              <span style={{ marginLeft: 6, fontSize: 11, color: "var(--text-muted)" }}>
                 (drag or scroll to stop)
               </span>
             </span>
@@ -265,11 +265,11 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
         )}
         <div className="stat">
           <span>Room</span>
-          <code style={{ fontSize: 12 }}>{roomId}</code>
+          <code style={{ fontSize: 12, color: "var(--accent)" }}>{roomId}</code>
         </div>
         <div className="stat">
           <span>File</span>
-          <span>{fileName ?? "Waiting for drop"}</span>
+          <span style={{ color: fileName ? "var(--text)" : "var(--text-muted)" }}>{fileName ?? "Waiting for drop"}</span>
         </div>
         <div style={{ marginTop: 12 }}>
           <small>Copy the URL to invite teammates. Cursors sync every ~1.2s via the webhook endpoint.</small>
@@ -298,14 +298,25 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
                 }
               }}
               style={{
-                padding: "6px 10px",
-                border: "1px solid var(--border)",
+                width: "100%",
+                padding: "8px 12px",
+                border: "1px solid #fed7aa",
                 borderRadius: 8,
-                background: "rgba(255,255,255,0.04)",
-                color: "inherit",
+                background: "white",
+                color: "var(--accent)",
                 font: "inherit",
                 cursor: "pointer",
-                fontSize: 12
+                fontSize: 12,
+                fontWeight: 600,
+                transition: "all 0.2s ease"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#fff7ed";
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "white";
+                e.currentTarget.style.borderColor = "#fed7aa";
               }}
             >
               Share “follow me” link

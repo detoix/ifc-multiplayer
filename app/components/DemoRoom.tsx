@@ -188,14 +188,25 @@ export function DemoRoom() {
                 }
               }}
               style={{
-                padding: "6px 10px",
-                border: "1px solid var(--border)",
+                padding: "8px 12px",
+                border: "1px solid #fed7aa", // Light orange border
                 borderRadius: 8,
-                background: "rgba(255,255,255,0.04)",
-                color: "inherit",
+                background: "white",
+                color: "var(--accent)",
                 font: "inherit",
                 cursor: "pointer",
-                fontSize: 12
+                fontSize: 12,
+                fontWeight: 600,
+                width: "100%",
+                transition: "all 0.2s ease"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "#fff7ed";
+                e.currentTarget.style.borderColor = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "white";
+                e.currentTarget.style.borderColor = "#fed7aa";
               }}
             >
               Share “follow me” link

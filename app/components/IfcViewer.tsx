@@ -2,7 +2,7 @@
 
 import React, { Suspense, useEffect, useState, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Center, Environment, Grid, OrbitControls, PerspectiveCamera } from "@react-three/drei";
+import { Grid, OrbitControls, PerspectiveCamera, Stage } from "@react-three/drei";
 import { IFCLoader } from "web-ifc-three/IFCLoader";
 import type { Group } from "three";
 import * as THREE from "three";
@@ -177,16 +177,22 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
           opacity: 0.5
         });
 
-        loader.ifcManager.createSubset({
-          modelID: model.modelID,
-          ids: [sel.expressId],
-          material,
-          scene: threeScene,
-          removePrevious: true,
-          customID
-        });
+        try {
+          loader.ifcManager.createSubset({
+            modelID: model.modelID,
+            ids: [sel.expressId],
+            material,
+            scene: threeScene,
+            removePrevious: true,
+            customID
+          });
 
-        activeSelectionSubsetsRef.current.push({ customID, material });
+          activeSelectionSubsetsRef.current.push({ customID, material });
+        } catch (e) {
+          // If the underlying IFC model is no longer registered
+          // (e.g. during rapid file changes), avoid crashing the app.
+          console.warn("[IfcModel] Failed to create selection subset", e);
+        }
       });
   }, [selections, threeScene]);
 
@@ -282,8 +288,15 @@ const CameraTracker = ({ onUpdate }: { onUpdate: (pos: [number, number, number],
 
 const FollowController = ({ target, onStopFollowing }: { target: PointerPayload, onStopFollowing?: () => void }) => {
     const { camera, gl } = useThree();
-    const controlsRef = useRef<any>(null);
-    
+
+    // Re-usable vectors to avoid allocations each frame
+    const goalPosRef = useRef(new THREE.Vector3());
+    const smoothedPosRef = useRef(new THREE.Vector3());
+    const goalDirRef = useRef(new THREE.Vector3());
+    const smoothedDirRef = useRef(new THREE.Vector3());
+    const targetLookAtRef = useRef(new THREE.Vector3());
+    const initializedRef = useRef(false);
+
     // We need to access the orbit controls. 
     // Since we are inside Canvas, we can look for it in the scene or just assume standard behavior.
     // Better yet, we can listen to "start" event on controls if we had access to them.
@@ -307,35 +320,60 @@ const FollowController = ({ target, onStopFollowing }: { target: PointerPayload,
         };
     }, [gl, onStopFollowing]);
 
-    useFrame(() => {
+    // Initialize smoothed position when we first get a target
+    useEffect(() => {
+        if (!target) return;
+        if (initializedRef.current) return;
+        smoothedPosRef.current.set(...target.position);
+        smoothedDirRef.current.set(...target.direction).normalize();
+        initializedRef.current = true;
+    }, [target]);
+
+    useFrame((_, delta) => {
         if (!target) return;
 
-        // Smoothly interpolate camera position
-        const targetPos = new THREE.Vector3(...target.position);
-        
-        // Calculate look direction
-        const dir = new THREE.Vector3(...target.direction).normalize();
-        const targetLookAt = targetPos.clone().add(dir.multiplyScalar(10)); // Look 10m ahead
+        const goalPos = goalPosRef.current.set(...target.position);
+        const smoothedPos = smoothedPosRef.current;
 
-        // We can just snap for now, or lerp. Snapping is safer for "following" to not get seasick 
-        // if the other user teleports. But let's try a quick lerp.
-        camera.position.lerp(targetPos, 0.5);
+        // Exponential smoothing of the *target* position, independent of camera/controls
+        const followStrength = 4; // tweakable: higher means faster follow
+        const step = 1 - Math.exp(-followStrength * delta);
+
+        smoothedPos.lerp(goalPos, step);
+
+        // Snap when very close to avoid micro jitter
+        if (smoothedPos.distanceToSquared(goalPos) < 1e-4) {
+            smoothedPos.copy(goalPos);
+        }
+
+        // Drive the camera directly from the smoothed position
+        camera.position.copy(smoothedPos);
+
+        // Smooth direction (rotation) separately to avoid jumpy orientation
+        const goalDir = goalDirRef.current.set(...target.direction).normalize();
+        const smoothedDir = smoothedDirRef.current;
+        const rotationStrength = 6; // tweakable: higher means faster rotation follow
+        const dirStep = 1 - Math.exp(-rotationStrength * delta);
+
+        smoothedDir.lerp(goalDir, dirStep).normalize();
+
+        // Snap when the angular difference is tiny
+        if (smoothedDir.angleTo(goalDir) < 0.01) {
+            smoothedDir.copy(goalDir);
+        }
+
+        const targetLookAt = targetLookAtRef.current;
+        targetLookAt
+            .copy(smoothedDir)
+            .multiplyScalar(10) // Look 10m ahead
+            .add(smoothedPos);
+
         camera.lookAt(targetLookAt);
         camera.updateProjectionMatrix();
-
-        // Note: OrbitControls will overwrite this if we don't update its target too.
-        // We really need to update controls.target to be where we are looking.
-        // But we don't have the controls ref here easily.
-        // HACK: Dispatch event or assume standard controls?
-        // Actually, if we just update camera, OrbitControls might snap it back on next frame if it thinks 
-        // it's in control.
-        // A common pattern is to update the controls' target to be slightly in front of the camera position.
     });
 
     // To properly support OrbitControls being "controlled", we should ideally get the controls instance.
-    // However, since OrbitControls is a sibling in IfcViewer, we can't easily grab it without context or props.
-    // For now, let's assume if we forcibly set camera position/rotation in useFrame, it overrides controls 
-    // UNTIL user interacts (which stops this component).
+    // For now, we just drive the camera directly and stop following on user interaction.
     
     return null;
 };
@@ -345,7 +383,7 @@ const FollowController = ({ target, onStopFollowing }: { target: PointerPayload,
 const PointersLayer = ({ pointers }: { pointers: PresenceMap }) => {
   const { camera } = useThree();
   const camPos = camera.position;
-  const thresholdSq = 50; // hide pointers closer than ~3.2 units
+  const thresholdSq = 1000; // hide pointers closer than ~3.2 units
 
   return (
     <>
@@ -423,42 +461,40 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
         <PointersLayer pointers={pointers} />
 
         <Suspense fallback={null}>
-          <Center>
-            {/* Show local selection stats if available, and maybe other users? 
-                Actually for now just showing local selected props would mean fetching them again 
-                OR we could pass them down if we want.
-                
-                For now let's just show a simple "Selection Active" indicator or nothing.
-                If the user wants to see properties, we need to fetch them.
-                
-                Simpler: If selectedProps is state here, we can keep fetching it.
-             */}
-             
-             {/* We need to re-fetch props if we want to show the box when selection comes from prop? 
-                 Actually, let's keep selectedProps local for the "Inspector", but update it when our selection changes.
-             */}
-             
-            {fileUrl ? (
-                <IfcModel 
-                    url={fileUrl} 
-                    onStoriesLoaded={setStories} 
-                    selectedStory={selectedStory}
-                    onSelectionChange={(id, props) => {
-                        onSelectionChange?.(id);
-                        if (id && props) {
-                            setSelectedProps(props);
-                        } else {
-                            setSelectedProps(null);
-                        }
-                    }}
-                    selections={selections}
-                />
-            ) : null}
-          </Center>
-          <Environment preset="city" />
+          {fileUrl ? (
+            <Stage
+              adjustCamera
+              preset="soft"
+              intensity={0.7}
+              environment="city"
+              shadows="accumulative"
+            >
+              <IfcModel 
+                  url={fileUrl} 
+                  onStoriesLoaded={setStories} 
+                  selectedStory={selectedStory}
+                  onSelectionChange={(id, props) => {
+                      onSelectionChange?.(id);
+                      if (id && props) {
+                          setSelectedProps(props);
+                      } else {
+                          setSelectedProps(null);
+                      }
+                  }}
+                  selections={selections}
+              />
+            </Stage>
+          ) : null}
         </Suspense>
-        <Grid args={[100, 100]} cellColor="#1f2937" sectionColor="#334155" fadeDistance={50} />
-        <OrbitControls enableDamping makeDefault />
+        <Grid
+          args={[80, 80]}
+          position={[0, -0.001, 0]}
+          cellColor="#1e293b"
+          sectionColor="#0f172a"
+          fadeDistance={60}
+          fadeStrength={0.8}
+        />
+        <OrbitControls enableDamping makeDefault enabled={!followingUserId} />
       </Canvas>
       
       {/* Selection Info */}
@@ -468,45 +504,45 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
             top: 20,
             left: 20,
             zIndex: 10,
-            background: 'rgba(0,0,0,0.8)',
-            padding: '12px',
-            borderRadius: '8px',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: 'white',
+            background: 'white',
+            padding: '16px',
+            borderRadius: '12px',
+            border: '1px solid #e2e8f0',
+            color: 'var(--text)',
             maxWidth: '300px',
-            fontFamily: 'monospace'
+            fontFamily: 'monospace',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
         }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '4px' }}>
-                <h3 style={{ margin: 0, fontSize: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
+                <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Selection
                 </h3>
                 <button 
                   onClick={() => setSelectedProps(null)}
-                  style={{ background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px', padding: '0 4px', lineHeight: 1 }}
                 >
                   ×
                 </button>
             </div>
             
             <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                 <div style={{ fontSize: '12px', marginBottom: '4px' }}>
-                    <div style={{ color: '#888', fontSize: '10px' }}>NAME</div>
+                 <div style={{ fontSize: '13px', marginBottom: '8px' }}>
+                    <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 600 }}>NAME</div>
                     {selectedProps.Name?.value || "Unnamed"}
                  </div>
-                 <div style={{ fontSize: '12px', marginBottom: '4px' }}>
-                    <div style={{ color: '#888', fontSize: '10px' }}>TYPE</div>
+                 <div style={{ fontSize: '13px', marginBottom: '8px' }}>
+                    <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 600 }}>TYPE</div>
                     {selectedProps.ObjectType?.value || "Unknown"}
                  </div>
-                 <div style={{ fontSize: '12px', marginBottom: '4px' }}>
-                    <div style={{ color: '#888', fontSize: '10px' }}>ID</div>
+                 <div style={{ fontSize: '13px', marginBottom: '8px' }}>
+                    <div style={{ color: '#94a3b8', fontSize: '10px', fontWeight: 600 }}>ID</div>
                     {selectedProps.GlobalId?.value || selectedProps.expressID}
                  </div>
                  
                  {/* Raw props for debugging */}
-                 <details style={{ marginTop: '8px' }}>
-                     <summary style={{ fontSize: '10px', color: '#666', cursor: 'pointer' }}>Raw Data</summary>
-                     <pre style={{ fontSize: '10px', overflow: 'auto', marginTop: '4px' }}>
+                 <details style={{ marginTop: '12px' }}>
+                     <summary style={{ fontSize: '11px', color: '#64748b', cursor: 'pointer', fontWeight: 500 }}>Raw Data</summary>
+                     <pre style={{ fontSize: '11px', overflow: 'auto', marginTop: '4px', color: '#334155', background: '#f8fafc', padding: '8px', borderRadius: '4px' }}>
                          {JSON.stringify(selectedProps, (key, value) => {
                              if (key === 'ownerHistory' || key === 'Placement' || key === 'RelatingType') return undefined; // simplify
                              if (value && value.type && value.value) return value.value;
@@ -525,11 +561,11 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
             top: 20,
             right: 20,
             zIndex: 10,
-            background: 'rgba(0,0,0,0.8)',
+            background: 'white',
             padding: '8px',
             borderRadius: '8px',
-            backdropFilter: 'blur(4px)',
-            border: '1px solid rgba(255,255,255,0.1)'
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
         }}>
             <select 
                 value={selectedStory ? selectedStory.expressID : ""} 
@@ -540,10 +576,11 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
                 }}
                 style={{
                     background: 'transparent',
-                    color: 'white',
+                    color: 'var(--text)',
                     border: 'none',
                     outline: 'none',
                     fontSize: '14px',
+                    fontWeight: 500,
                     cursor: 'pointer',
                     minWidth: '120px'
                 }}
@@ -566,7 +603,12 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
             justifyContent: "center",
             color: "#94a3b8",
             fontSize: 14,
-            pointerEvents: "none"
+            fontWeight: 500,
+            pointerEvents: "none",
+            background: "rgba(255,255,255,0.8)",
+            padding: "8px 16px",
+            borderRadius: "20px",
+            backdropFilter: "blur(4px)"
           }}
         >
           Drop an IFC to start rendering.

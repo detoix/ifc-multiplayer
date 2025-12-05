@@ -1,25 +1,28 @@
 :root {
-  --bg: #0f172a;
-  --panel: #111827;
-  --border: #1f2937;
-  --text: #e5e7eb;
-  --accent: #a855f7;
-  --accent-2: #22d3ee;
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --accent: #f97316;
+  /* Plectra Orange (Vibrant) */
+  --accent-hover: #ea580c;
+  --danger: #ef4444;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   padding: 0;
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
     url("/shape-9.87b97093.webp") center / cover no-repeat fixed,
-    radial-gradient(circle at 20% 20%, rgba(168, 85, 247, 0.12), transparent 25%),
-    radial-gradient(circle at 80% 0%, rgba(34, 211, 238, 0.12), transparent 22%),
-    var(--bg);
+    radial-gradient(circle at 60% 40%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.6)),
+    #f1f5f9;
   color: var(--text);
   min-height: 100vh;
 }
@@ -38,11 +41,15 @@ a {
 
 main {
   width: 100%;
-  max-width: 1200px;
-  background: linear-gradient(135deg, rgba(17, 24, 39, 0.85), rgba(17, 24, 39, 0.94));
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  max-width: 1400px;
+  background: rgba(255, 255, 255, 0.95);
+  /* Higher opacity for readability */
+  backdrop-filter: blur(20px);
+  /* Stronger blur */
+  border: 1px solid white;
+  border-radius: 20px;
+  /* Softer, larger radius like the shapes */
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
 
@@ -51,23 +58,30 @@ button {
 }
 
 .dropzone {
-  border: 2px dashed var(--border);
-  border-radius: 14px;
-  padding: 32px;
-  background: rgba(255, 255, 255, 0.02);
-  transition: border-color 0.2s ease, background 0.2s ease;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 40px;
+  background: rgba(248, 250, 252, 0.8);
+  transition: all 0.2s ease;
 }
 
 .dropzone:hover {
   border-color: var(--accent);
-  background: rgba(168, 85, 247, 0.06);
+  background: #fff7ed;
+  /* Light orange tint */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 16px;
-  padding: 24px;
+  grid-template-columns: 1fr 340px;
+  gap: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.grid>section {
+  padding: 32px;
 }
 
 @media (max-width: 900px) {
@@ -79,11 +93,13 @@ button {
 .canvas-shell {
   position: relative;
   width: 100%;
-  height: 70vh;
-  border-radius: 12px;
+  height: 75vh;
+  background: #f8fafc;
+  /* Light grey canvas placeholder */
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
   overflow: hidden;
-  background: #0b1224;
-  border: 1px solid var(--border);
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.02);
 }
 
 .pointer-layer {
@@ -97,34 +113,49 @@ button {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  background: white;
+  border: 2px solid var(--accent);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   transform: translate(-50%, -50%);
   transition: transform 0.1s ease;
 }
 
 .sidebar {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.02);
+  padding: 32px;
+  background: white;
+  /* Solid background for sidebar readability */
+  border-left: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .tag {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .stat {
   display: flex;
   justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.stat strong {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .stat:last-child {
@@ -132,5 +163,8 @@ button {
 }
 
 small {
-  color: #94a3b8;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  display: block;
 }

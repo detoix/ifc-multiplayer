@@ -131,13 +131,15 @@ export const Chat = ({
       <div style={{ 
         flex: 1, 
         overflowY: "auto", 
-        background: "rgba(0,0,0,0.1)", 
-        borderRadius: "8px", 
-        padding: "8px",
-        marginBottom: "8px",
+        background: "white", 
+        borderRadius: "12px", 
+        padding: "12px",
+        marginBottom: "12px",
         display: "flex",
         flexDirection: "column",
-        gap: "6px"
+        gap: "8px",
+        border: "1px solid #f1f5f9",
+        boxShadow: "inset 0 2px 4px 0 rgba(0,0,0,0.01)"
       }}>
         {messages.length === 0 && (
           <div style={{ color: "#64748b", fontSize: "11px", textAlign: "center", marginTop: "20px" }}>
@@ -154,26 +156,29 @@ export const Chat = ({
             );
           }
           
-          const isMe = identity && msg.senderId === identity.id;
+                const isMe = identity && msg.senderId === identity.id;
           return (
             <div key={msg.id} style={{ 
               display: "flex", 
               flexDirection: "column", 
               alignItems: isMe ? "flex-end" : "flex-start" 
             }}>
-              <div style={{ fontSize: "10px", color: msg.color || "#ccc", marginBottom: "2px", marginLeft: "4px", marginRight: "4px" }}>
+              <div style={{ fontSize: "10px", color: "#94a3b8", marginBottom: "2px", marginLeft: "4px", marginRight: "4px" }}>
                 {msg.senderName}
               </div>
               <div style={{
-                background: isMe ? "#2563eb" : "#334155",
-                color: "white",
-                padding: "6px 10px",
+                background: isMe ? "var(--accent)" : "white",
+                color: isMe ? "white" : "var(--text)",
+                padding: "8px 12px",
                 borderRadius: "12px",
                 borderBottomRightRadius: isMe ? "2px" : "12px",
                 borderBottomLeftRadius: isMe ? "12px" : "2px",
                 fontSize: "13px",
                 maxWidth: "90%",
-                wordBreak: "break-word"
+                wordBreak: "break-word",
+                fontWeight: 500,
+                boxShadow: isMe ? "0 2px 4px rgba(249, 115, 22, 0.2)" : "0 1px 2px rgba(0,0,0,0.05)",
+                border: isMe ? "none" : "1px solid #e2e8f0"
               }}>
                 {msg.text}
               </div>
@@ -190,10 +195,10 @@ export const Chat = ({
               bottom: "40px",
               left: 0,
               right: 0,
-              background: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "6px",
-              boxShadow: "0 -4px 6px -1px rgba(0, 0, 0, 0.1)",
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
               zIndex: 20,
               maxHeight: "150px",
               overflowY: "auto"
@@ -206,8 +211,8 @@ export const Chat = ({
                         padding: "8px 12px",
                         fontSize: "13px",
                         cursor: "pointer",
-                        background: i === selectedIndex ? "#3b82f6" : "transparent",
-                        color: i === selectedIndex ? "white" : "#cbd5e1"
+                        background: i === selectedIndex ? "#fff7ed" : "transparent",
+                        color: i === selectedIndex ? "var(--accent)" : "var(--text)"
                     }}
                   >
                       {s}
@@ -216,7 +221,7 @@ export const Chat = ({
           </div>
       )}
 
-      <form onSubmit={handleSend} style={{ display: "flex", gap: "6px" }}>
+      <form onSubmit={handleSend} style={{ display: "flex", gap: "8px" }}>
         <input
           ref={inputRef}
           type="text"
@@ -227,26 +232,30 @@ export const Chat = ({
           disabled={!identity}
           style={{
             flex: 1,
-            background: "transparent",
-            border: "1px solid var(--border)",
-            borderRadius: "6px",
-            padding: "6px 10px",
-            color: "white",
+            background: "white",
+            border: "1px solid #e2e8f0",
+            borderRadius: "8px",
+            padding: "8px 12px",
+            color: "var(--text)",
             fontSize: "13px",
-            outline: "none"
+            outline: "none",
+            fontFamily: "inherit",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
           }}
         />
         <button
           type="submit"
           disabled={!identity || !inputText.trim()}
           style={{
-            background: identity && inputText.trim() ? "var(--accent)" : "#334155",
-            color: "white",
+            background: identity && inputText.trim() ? "var(--accent)" : "#f1f5f9",
+            color: identity && inputText.trim() ? "white" : "#94a3b8",
             border: "none",
-            borderRadius: "6px",
-            padding: "0 12px",
+            borderRadius: "8px",
+            padding: "0 16px",
             cursor: identity && inputText.trim() ? "pointer" : "not-allowed",
-            fontSize: "13px"
+            fontSize: "13px",
+            fontWeight: 600,
+            transition: "all 0.2s"
           }}
         >
           Send
