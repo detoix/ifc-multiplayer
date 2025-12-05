@@ -8,6 +8,8 @@ import { usePresence } from "@/app/lib/usePresence";
 import { JoinDialog } from "@/app/components/JoinDialog";
 import type { UserIdentity } from "@/app/lib/identity";
 
+import { Chat } from "@/app/components/Chat";
+
 export function DemoRoom() {
   // Load the demo file from the public path
   const [fileUrl, setFileUrl] = useState<string | null>(null);
@@ -19,7 +21,7 @@ export function DemoRoom() {
 
   // Real users (observers)
   // We use a static room ID "demo" for all real users to see each other
-  const { pointers: realPointers, selections, updatePosition, updateSelection, events } = usePresence("demo", identity);
+  const { pointers: realPointers, selections, messages, updatePosition, updateSelection, sendChatMessage } = usePresence("demo", identity);
 
   // Merge pointers
   const pointers = useMemo(
@@ -110,16 +112,13 @@ export function DemoRoom() {
         <div style={{ marginTop: 12 }}>
           <small>The other users in this room are simulated AI agents demonstrating the multiplayer capabilities.</small>
         </div>
-        {events.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <small>Activity</small>
-            <ul style={{ margin: "4px 0 0", paddingLeft: 16, fontSize: 12, color: "#94a3b8" }}>
-              {events.slice(-3).map((msg, idx) => (
-                <li key={idx}>{msg}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+        
+        <Chat 
+            messages={messages} 
+            onSendMessage={sendChatMessage} 
+            identity={identity} 
+        />
+
       </aside>
       <JoinDialog onJoin={setIdentity} />
     </div>

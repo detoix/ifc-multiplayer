@@ -147,15 +147,13 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
       });
   }, [selections, threeScene]);
 
-  const handlePointerDown = async (event: any) => {
-    // Only handle primary clicks
+  const handleClick = async (event: any) => {
+    // Only handle primary button clicks
     if (event.button !== 0) return;
-    
+
     // Check if we hit the model
     const intersection = event.intersections.find((i: any) => i.object === event.object);
     if (!intersection) {
-        // Clicked on nothing? Deselect?
-        // Let's assume background click is handled by parent or different handler if we want deselect
         return;
     }
 
@@ -188,9 +186,9 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
     <group>
         <primitive 
             object={displayModel} 
-            onPointerDown={(e: any) => {
+            onClick={(e: any) => {
                 e.stopPropagation();
-                handlePointerDown(e);
+                handleClick(e);
             }}
         />
     </group>

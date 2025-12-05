@@ -29,10 +29,20 @@ const getClientId = () => {
 // Module-level singleton - only created once
 let pusherInstance: PusherClient | null = null;
 
+export type ChatMessage = {
+  id: string;
+  type: "chat" | "event";
+  senderId?: string;
+  senderName?: string;
+  text: string;
+  timestamp: number;
+  color?: string;
+};
+
 export const usePresence = (roomId: string, identity: UserIdentity | null) => {
   const [pointers, setPointers] = useState<PresenceMap>({});
   const [selections, setSelections] = useState<SelectionMap>({});
-  const [events, setEvents] = useState<string[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const lastSent = useRef(0);
 
   // Initialize pointer ref with identity if available, otherwise defaults
@@ -98,11 +108,6 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     };
 
     const handleSelectionUpdate = ({ senderId, selection }: { senderId: string; selection: SelectionPayload }) => {
-      console.log("[handleSelectionUpdate] incoming", {
-        senderId,
-        selection
-      });
-
       // Track selections for all users, including ourselves, so that
       // each client has exactly one active highlight per user.
       setSelections((prev) => ({
@@ -111,14 +116,25 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
       }));
     };
 
+    const handleChatMessage = (msg: ChatMessage) => {
+      setMessages((prev) => [...prev.slice(-49), msg]);
+    };
+
     // Handle user leaving
     const handleUserLeft = ({ senderId }: { senderId: string }) => {
       setPointers((prev) => {
         const next = { ...prev };
         const label = next[senderId]?.label || prev[senderId]?.label;
         delete next[senderId];
+
         if (label) {
-          setEvents((prevEvents) => [...prevEvents.slice(-4), `${label} left the room`]);
+          const leaveMsg: ChatMessage = {
+            id: crypto.randomUUID(),
+            type: "event",
+            text: `${label} left the room`,
+            timestamp: Date.now()
+          };
+          setMessages((prev) => [...prev.slice(-49), leaveMsg]);
         }
         return next;
       });
@@ -132,17 +148,25 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     // Handle user joining
     const handleUserJoined = ({ senderId, name }: { senderId: string; name: string }) => {
       if (senderId === identity.id) return;
-      setEvents((prev) => [...prev.slice(-4), `${name} joined the room`]);
+      const joinMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        type: "event",
+        text: `${name} joined the room`,
+        timestamp: Date.now()
+      };
+      setMessages((prev) => [...prev.slice(-49), joinMsg]);
     };
 
     channel.bind("pointer-update", handlePointerUpdate);
     channel.bind("selection-update", handleSelectionUpdate);
+    channel.bind("chat-message", handleChatMessage);
     channel.bind("user-left", handleUserLeft);
     channel.bind("user-joined", handleUserJoined);
 
     return () => {
       channel.unbind("pointer-update", handlePointerUpdate);
       channel.unbind("selection-update", handleSelectionUpdate);
+      channel.unbind("chat-message", handleChatMessage);
       channel.unbind("user-left", handleUserLeft);
       channel.unbind("user-joined", handleUserJoined);
       pusherInstance?.unsubscribe(channelName);
@@ -151,8 +175,7 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     };
   }, [roomId, identity]);
 
-  // As soon as we have an identity, send one pointer update so
-  // others can see our camera even if we never move it.
+  // As soon as we have an identity, send one pointer update
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!identity) return;
@@ -171,7 +194,7 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     }).catch(console.error);
   }, [roomId, identity]);
 
-  // Helper to announce that we are leaving the room (route change, tab close, etc.)
+  // Helper to announce that we are leaving the room
   const announceLeave = React.useCallback(() => {
     if (typeof window === "undefined") return;
     if (!identity) return;
@@ -205,7 +228,7 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     }
   }, [roomId, identity]);
 
-  // Announce leave on unmount / dependency change
+  // Announce leave on unmount
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!identity) return;
@@ -247,14 +270,6 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
       color: identity.color
     };
 
-    console.log("[updateSelection] local", {
-      myId: identity.id,
-      expressId,
-      color: identity.color
-    });
-
-    // Optimistic local update so our own highlight updates immediately
-    // and we maintain exactly one active selection per client.
     setSelections((prev) => ({
       ...prev,
       [identity.id]: selectionPayload
@@ -271,5 +286,40 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     }).catch(console.error);
   }, [roomId, identity]);
 
-  return { pointers, selections, updatePosition, updateSelection, events } as const;
+  const sendChatMessage = React.useCallback((text: string) => {
+    if (!identity || !text.trim()) return;
+
+    const msg: ChatMessage = {
+      id: crypto.randomUUID(),
+      type: "chat",
+      senderId: identity.id,
+      senderName: identity.name,
+      text: text.trim(),
+      timestamp: Date.now(),
+      color: identity.color
+    };
+
+    // Add locally immediately
+    // Note: If we broadcast to self via Pusher too, we might duplicate.
+    // Usually better to wait for Pusher event for consistency, OR optimistically update.
+    // Given the previous pattern, let's wait for pusher event OR assume pusher event is broadcast to everyone including sender.
+    // Pusher usually excludes the sender if triggered from client with socketId, but we are triggering via server API.
+    // The server API trigger sends to everyone on the channel.
+    // So if we also add it locally here, we will see it twice unless we de-dupe.
+
+    // Let's just rely on the Pusher event loop for simplicity and ordering.
+    // BUT, generic pusher trigger usually sends to everyone.
+
+    fetch("/api/pusher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: `room-${roomId}`,
+        event: "chat-message",
+        data: msg
+      })
+    }).catch(console.error);
+  }, [roomId, identity]);
+
+  return { pointers, selections, messages, updatePosition, updateSelection, sendChatMessage } as const;
 };

@@ -9,6 +9,8 @@ import { usePresence } from "@/app/lib/usePresence";
 import { JoinDialog } from "@/app/components/JoinDialog";
 import type { UserIdentity } from "@/app/lib/identity";
 
+import { Chat } from "@/app/components/Chat";
+
 const randomLabel = () => {
   const names = ["Falcon", "Quartz", "Lyra", "Cobalt", "Nova", "Atlas", "Delta", "Echo"];
   return names[Math.floor(Math.random() * names.length)];
@@ -31,7 +33,7 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
     return path.replaceAll("/", "-") || "default-room";
   }, [initialRoomId, pathname]);
 
-  const { pointers, selections, updatePosition, updateSelection, events } = usePresence(roomId, identity);
+  const { pointers, selections, messages, updatePosition, updateSelection, sendChatMessage } = usePresence(roomId, identity);
   const router = useRouter();
 
   const handleFiles = useCallback(async (files: File[]) => {
@@ -209,16 +211,13 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
         <div style={{ marginTop: 12 }}>
           <small>Make sure <code>public/wasm/web-ifc.wasm</code> exists. If not, copy it from <code>node_modules/web-ifc/web-ifc.wasm</code>.</small>
         </div>
-        {events.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <small>Activity</small>
-            <ul style={{ margin: "4px 0 0", paddingLeft: 16, fontSize: 12, color: "#94a3b8" }}>
-              {events.slice(-3).map((msg, idx) => (
-                <li key={idx}>{msg}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+        
+        <Chat 
+            messages={messages} 
+            onSendMessage={sendChatMessage} 
+            identity={identity} 
+        />
+
       </aside>
       <JoinDialog onJoin={setIdentity} />
     </div>
