@@ -1,15 +1,24 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import { useFakePresence } from "@/app/lib/useFakePresence";
+import { usePresence } from "@/app/lib/usePresence";
 
 export function DemoRoom() {
   // Load the demo file from the public path
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   
-  // Using the fake presence hook instead of real Pusher presence
-  const { pointers } = useFakePresence();
+  // Fake users (AI agents)
+  const { pointers: fakePointers } = useFakePresence();
+
+  // Real users (observers)
+  // We use a static room ID "demo" for all real users to see each other
+  const { pointers: realPointers, updatePosition, color } = usePresence("demo", "Observer");
+
+  // Merge pointers
+  const pointers = useMemo(() => ({
+    ...realPointers,
+    ...fakePointers
+  }), [realPointers, fakePointers]);
 
   useEffect(() => {
     // Fetch the demo file from blob storage
@@ -61,14 +70,14 @@ export function DemoRoom() {
           <IfcViewer 
             fileUrl={fileUrl} 
             pointers={pointers}
-            onCameraUpdate={() => {}} // No-op for demo, we don't broadcast
+            onCameraUpdate={updatePosition}
           />
         </div>
       </section>
 
       <aside className="sidebar">
         <div className="tag" style={{ marginBottom: 12 }}>
-          <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />
+          <span style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
           You (Observer)
         </div>
         <div className="stat">
