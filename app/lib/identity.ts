@@ -13,7 +13,7 @@ const getRandomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
 export const getIdentity = (): UserIdentity | null => {
     if (typeof window === "undefined") return null;
     try {
-        const stored = window.localStorage.getItem(STORAGE_KEY);
+        const stored = window.sessionStorage.getItem(STORAGE_KEY);
         if (stored) {
             return JSON.parse(stored);
         }
@@ -30,7 +30,7 @@ export const createIdentity = (name: string): UserIdentity => {
         color: getRandomColor(),
     };
     if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
+        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
     }
     return identity;
 };
@@ -41,7 +41,7 @@ export const updateIdentity = (updates: Partial<UserIdentity>): UserIdentity | n
 
     const updated = { ...current, ...updates };
     if (typeof window !== "undefined") {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     }
     return updated;
 };

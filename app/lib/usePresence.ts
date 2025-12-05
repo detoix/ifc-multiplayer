@@ -14,10 +14,10 @@ export type PresenceMap = Record<string, PointerPayload>;
 
 const getClientId = () => {
   if (typeof window === "undefined") return "server";
-  const stored = window.localStorage.getItem("ifc-presence-client-id");
+  const stored = window.sessionStorage.getItem("ifc-presence-client-id");
   if (stored) return stored;
   const id = crypto.randomUUID();
-  window.localStorage.setItem("ifc-presence-client-id", id);
+  window.sessionStorage.setItem("ifc-presence-client-id", id);
   return id;
 };
 
