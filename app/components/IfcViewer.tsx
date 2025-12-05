@@ -62,14 +62,35 @@ const IfcModel = ({ url }: { url: string }) => {
 const CameraTracker = ({ onUpdate }: { onUpdate: (pos: [number, number, number], dir: [number, number, number]) => void }) => {
   const { camera } = useThree();
   const lastUpdate = useRef(0);
+  const lastPos = useRef(new THREE.Vector3());
+  const lastDir = useRef(new THREE.Vector3());
 
   useFrame(() => {
     const now = performance.now();
     if (now - lastUpdate.current > 50) { // Throttle to ~20fps
+      
+      const currentPos = camera.position;
+      const currentDir = new THREE.Vector3();
+      camera.getWorldDirection(currentDir);
+
+      // Check if changed significantly
+      // Distance squared 0.01 means sqrt(0.01) = 0.1 units
+      // Direction squared 0.01 means roughly 5.7 degrees
+      if (
+        currentPos.distanceToSquared(lastPos.current) < 0.01 &&
+        currentDir.distanceToSquared(lastDir.current) < 0.01
+      ) {
+        return;
+      }
+
       lastUpdate.current = now;
-      const dir = new THREE.Vector3();
-      camera.getWorldDirection(dir);
-      onUpdate([camera.position.x, camera.position.y, camera.position.z], [dir.x, dir.y, dir.z]);
+      lastPos.current.copy(currentPos);
+      lastDir.current.copy(currentDir);
+
+      onUpdate(
+        [currentPos.x, currentPos.y, currentPos.z], 
+        [currentDir.x, currentDir.y, currentDir.z]
+      );
     }
   });
   return null;
