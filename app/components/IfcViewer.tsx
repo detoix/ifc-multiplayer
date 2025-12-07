@@ -22,6 +22,7 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
   const storiesRef = useRef<any[]>([]);
   const { scene: threeScene } = useThree();
   const activeSelectionSubsetsRef = useRef<{ customID: string; material: THREE.Material }[]>([]);
+  const visibleElementIdsRef = useRef<Set<number> | null>(null);
 
   // Handle multiplayer selections
   useEffect(() => {
@@ -36,6 +37,35 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
       try {
         const model = await loader.loadAsync(url) as any;
         console.log("IFC loaded successfully", model);
+
+        // Center the model horizontally so its footprint
+        // is centered around the world origin (0, 0) in the ground plane.
+        // We only shift X and Z, leaving Y (height) unchanged.
+        if (model.geometry && model.geometry.attributes?.position) {
+          const geometry = model.geometry as THREE.BufferGeometry;
+          geometry.computeBoundingBox();
+          const box = geometry.boundingBox;
+          if (box) {
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+
+            const positionAttr = geometry.getAttribute("position") as THREE.BufferAttribute;
+            const array = positionAttr.array as Float32Array;
+
+            for (let i = 0; i < array.length; i += 3) {
+              // X
+              array[i] -= center.x;
+              // Y stays as-is: array[i + 1]
+              // Z
+              array[i + 2] -= center.z;
+            }
+
+            positionAttr.needsUpdate = true;
+            geometry.computeBoundingBox();
+            geometry.computeBoundingSphere();
+          }
+        }
+
         modelRef.current = model;
         
         // Setup shadows
@@ -63,13 +93,27 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
         
         findStories(ifcProject);
 
-        // Get elevations for sorting
+        const collectElementIds = (node: any): number[] => {
+          const ids: number[] = [];
+          if (typeof node.expressID === "number") {
+            ids.push(node.expressID);
+          }
+          if (node.children && Array.isArray(node.children)) {
+            node.children.forEach((child: any) => {
+              ids.push(...collectElementIds(child));
+            });
+          }
+          return ids;
+        };
+
+        // Get elevations for sorting and collect element ids per storey
         const storiesWithElevation = await Promise.all(stories.map(async (story) => {
           const props = await loader.ifcManager.getItemProperties(model.modelID, story.expressID);
           const elevation = props.Elevation?.value || 0;
           const name = props.Name?.value || story.Name?.value || `Story ${story.expressID}`;
           const longName = props.LongName?.value;
-          return { ...story, elevation, name: longName || name, modelID: model.modelID };
+          const elementIds = collectElementIds(story);
+          return { ...story, elevation, name: longName || name, modelID: model.modelID, elementIds };
         }));
 
         // Sort descending (highest first) so bottom story is at bottom of list
@@ -95,6 +139,7 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
       }
       setDisplayModel(null);
       modelRef.current = null;
+      visibleElementIdsRef.current = null;
     };
   }, [url]);
 
@@ -114,6 +159,7 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
       } catch (e) {
         // ignore if it doesn't exist
       }
+      visibleElementIdsRef.current = null;
       return;
     }
 
@@ -121,13 +167,42 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
     model.visible = false;
 
     try {
+      const allStories = storiesRef.current || [];
+      const targetElevation = (selectedStory as any).elevation ?? 0;
+
+      let ids: number[] = [];
+
+      // Include all storeys with elevation <= selected storey
+      allStories.forEach((story: any) => {
+        const storyElevation = story.elevation ?? 0;
+        if (storyElevation <= targetElevation) {
+          if (Array.isArray(story.elementIds) && story.elementIds.length) {
+            ids.push(...story.elementIds);
+          } else if (typeof story.expressID === "number") {
+            ids.push(story.expressID);
+          }
+        }
+      });
+
+      // Fallback: if we somehow didn't collect anything, at least show the selected storey
+      if (!ids.length) {
+        const selfIds = Array.isArray((selectedStory as any).elementIds) && (selectedStory as any).elementIds.length
+          ? (selectedStory as any).elementIds
+          : [selectedStory.expressID];
+        ids = selfIds;
+      }
+
+      // De-duplicate IDs
+      ids = Array.from(new Set(ids));
+
       loader.ifcManager.createSubset({
         modelID,
-        ids: [selectedStory.expressID],
+        ids,
         scene: threeScene,
         removePrevious: true,
         customID: "storey-subset"
       });
+      visibleElementIdsRef.current = new Set(ids);
     } catch (e) {
       console.error("Failed to create storey subset", e);
     }
@@ -200,6 +275,9 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
     // Only handle primary button clicks
     if (event.button !== 0) return;
 
+    // Ignore clicks that involved dragging (orbiting)
+    if (typeof event.delta === "number" && event.delta > 5) return;
+
     // Check if we hit the model
     const intersection = event.intersections.find((i: any) => i.object === event.object);
     if (!intersection) {
@@ -222,6 +300,10 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
     );
 
     if (expressId !== undefined) {
+       const visibleIds = visibleElementIdsRef.current;
+       if (visibleIds && !visibleIds.has(expressId)) {
+         return;
+       }
        console.log("Selected ID:", expressId);
        
        // Get properties
@@ -425,6 +507,7 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStory, setSelectedStory] = useState<any | null>(null);
   const [selectedProps, setSelectedProps] = useState<any | null>(null);
+  const [isLevelsHover, setIsLevelsHover] = useState(false);
 
   // Reset stories when file changes
   useEffect(() => {
@@ -440,6 +523,7 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
         onPointerMissed={(event) => {
           // Primary button click on empty space => unselect
           if (event.button !== 0) return;
+          if (typeof event.delta === "number" && event.delta > 5) return;
           onSelectionChange?.(null);
           setSelectedProps(null);
         }}
@@ -471,7 +555,11 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
             >
               <IfcModel 
                   url={fileUrl} 
-                  onStoriesLoaded={setStories} 
+                  onStoriesLoaded={(loadedStories) => {
+                      setStories(loadedStories);
+                      // Default to the highest storey (which will show all levels up to it)
+                      setSelectedStory((prev) => prev ?? (loadedStories[0] ?? null));
+                  }} 
                   selectedStory={selectedStory}
                   onSelectionChange={(id, props) => {
                       onSelectionChange?.(id);
@@ -560,32 +648,37 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
             position: 'absolute',
             top: 20,
             right: 20,
-            zIndex: 10,
-            background: 'white',
-            padding: '8px',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+            zIndex: 10
         }}>
             <select 
-                value={selectedStory ? selectedStory.expressID : ""} 
+                value={selectedStory ? selectedStory.expressID : stories[0]?.expressID} 
                 onChange={(e) => {
-                    const id = e.target.value;
-                    if (!id) setSelectedStory(null);
-                    else setSelectedStory(stories.find(s => s.expressID === Number(id)));
+                    const id = Number(e.target.value);
+                    const story = stories.find(s => s.expressID === id) ?? null;
+                    setSelectedStory(story);
                 }}
                 style={{
-                    background: 'transparent',
-                    color: 'var(--text)',
-                    border: 'none',
+                    padding: '8px 12px',
+                    background: isLevelsHover ? '#fff7ed' : 'white',
+                    color: 'var(--accent)',
+                    borderRadius: 8,
+                    border: isLevelsHover ? '1px solid var(--accent)' : '1px solid #fed7aa',
                     outline: 'none',
-                    fontSize: '14px',
-                    fontWeight: 500,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    font: 'inherit',
                     cursor: 'pointer',
-                    minWidth: '120px'
+                    minWidth: '180px',
+                    height: '34px',
+                    lineHeight: '18px',
+                    transition: 'all 0.2s ease',
+                    WebkitAppearance: 'none',
+                    MozAppearance: 'none',
+                    appearance: 'none'
                 }}
+                onMouseEnter={() => setIsLevelsHover(true)}
+                onMouseLeave={() => setIsLevelsHover(false)}
             >
-                <option value="" style={{ color: 'black' }}>Whole Building</option>
                 {stories.map(story => (
                     <option key={story.expressID} value={story.expressID} style={{ color: 'black' }}>
                         {story.name}
