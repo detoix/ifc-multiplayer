@@ -34,7 +34,16 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
     return path.replaceAll("/", "-") || "default-room";
   }, [initialRoomId, pathname]);
 
-  const { pointers, selections, messages, updatePosition, updateSelection, sendChatMessage } = usePresence(roomId, identity);
+  const {
+    pointers,
+    selections,
+    levels,
+    messages,
+    updatePosition,
+    updateSelection,
+    updateLevel,
+    sendChatMessage
+  } = usePresence(roomId, identity);
   const router = useRouter();
 
   // Current follow target is encoded in the URL as ?follow=<username>
@@ -232,9 +241,11 @@ export function Room({ initialRoomId }: { initialRoomId?: string }) {
           <IfcViewer 
             fileUrl={fileUrl} 
             pointers={pointers}
+            levels={levels}
             onCameraUpdate={updatePosition}
             selections={selections}
             onSelectionChange={updateSelection}
+            onLevelChange={updateLevel}
             followingUserId={followingUserId}
             onStopFollowing={() => {
               setFollowParam(null);

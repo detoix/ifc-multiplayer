@@ -23,7 +23,16 @@ export function DemoRoom() {
 
   // Real users (observers)
   // We use a static room ID "demo" for all real users to see each other
-  const { pointers: realPointers, selections, messages, updatePosition, updateSelection, sendChatMessage } = usePresence("demo", identity);
+  const {
+    pointers: realPointers,
+    selections,
+    levels,
+    messages,
+    updatePosition,
+    updateSelection,
+    updateLevel,
+    sendChatMessage
+  } = usePresence("demo", identity);
 
   // Merge pointers
   const pointers = useMemo(
@@ -137,9 +146,11 @@ export function DemoRoom() {
           <IfcViewer 
             fileUrl={fileUrl} 
             pointers={pointers}
+            levels={levels}
             onCameraUpdate={updatePosition}
             selections={selections}
             onSelectionChange={updateSelection}
+            onLevelChange={updateLevel}
             followingUserId={followingUserId}
             onStopFollowing={() => {
               setFollowParam(null);
@@ -195,7 +206,7 @@ export function DemoRoom() {
                 color: "var(--accent)",
                 font: "inherit",
                 cursor: "pointer",
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: 600,
                 width: "100%",
                 transition: "all 0.2s ease"
@@ -209,7 +220,7 @@ export function DemoRoom() {
                 e.currentTarget.style.borderColor = "#fed7aa";
               }}
             >
-              Share “follow me” link
+              Copy “follow me” link
             </button>
           </div>
         )}

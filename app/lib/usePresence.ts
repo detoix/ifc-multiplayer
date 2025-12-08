@@ -10,12 +10,15 @@ export type PointerPayload = {
   color: string;
   label: string;
 };
+
 export type SelectionPayload = {
   expressId: number | null;
   color: string;
 };
+
 export type PresenceMap = Record<string, PointerPayload>;
 export type SelectionMap = Record<string, SelectionPayload>;
+export type LevelMap = Record<string, number | null>;
 
 const getClientId = () => {
   if (typeof window === "undefined") return "server";
@@ -42,6 +45,7 @@ export type ChatMessage = {
 export const usePresence = (roomId: string, identity: UserIdentity | null) => {
   const [pointers, setPointers] = useState<PresenceMap>({});
   const [selections, setSelections] = useState<SelectionMap>({});
+  const [levels, setLevels] = useState<LevelMap>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const lastSent = useRef(0);
 
@@ -116,6 +120,13 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
       }));
     };
 
+    const handleLevelUpdate = ({ senderId, levelExpressId }: { senderId: string; levelExpressId: number | null }) => {
+      setLevels((prev) => ({
+        ...prev,
+        [senderId]: levelExpressId
+      }));
+    };
+
     const handleChatMessage = (msg: ChatMessage) => {
       setMessages((prev) => [...prev.slice(-49), msg]);
     };
@@ -159,6 +170,7 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
 
     channel.bind("pointer-update", handlePointerUpdate);
     channel.bind("selection-update", handleSelectionUpdate);
+    channel.bind("level-update", handleLevelUpdate);
     channel.bind("chat-message", handleChatMessage);
     channel.bind("user-left", handleUserLeft);
     channel.bind("user-joined", handleUserJoined);
@@ -166,12 +178,14 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     return () => {
       channel.unbind("pointer-update", handlePointerUpdate);
       channel.unbind("selection-update", handleSelectionUpdate);
+      channel.unbind("level-update", handleLevelUpdate);
       channel.unbind("chat-message", handleChatMessage);
       channel.unbind("user-left", handleUserLeft);
       channel.unbind("user-joined", handleUserJoined);
       pusherInstance?.unsubscribe(channelName);
       setPointers({});
       setSelections({});
+      setLevels({});
     };
   }, [roomId, identity]);
 
@@ -286,6 +300,25 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     }).catch(console.error);
   }, [roomId, identity]);
 
+  const updateLevel = React.useCallback((levelExpressId: number | null) => {
+    if (!identity) return;
+
+    setLevels((prev) => ({
+      ...prev,
+      [identity.id]: levelExpressId
+    }));
+
+    fetch("/api/pusher", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: `room-${roomId}`,
+        event: "level-update",
+        data: { senderId: identity.id, levelExpressId }
+      })
+    }).catch(console.error);
+  }, [roomId, identity]);
+
   const sendChatMessage = React.useCallback((text: string) => {
     if (!identity || !text.trim()) return;
 
@@ -321,5 +354,14 @@ export const usePresence = (roomId: string, identity: UserIdentity | null) => {
     }).catch(console.error);
   }, [roomId, identity]);
 
-  return { pointers, selections, messages, updatePosition, updateSelection, sendChatMessage } as const;
+  return {
+    pointers,
+    selections,
+    levels,
+    messages,
+    updatePosition,
+    updateSelection,
+    updateLevel,
+    sendChatMessage
+  } as const;
 };

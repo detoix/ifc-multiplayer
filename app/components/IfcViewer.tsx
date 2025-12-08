@@ -7,7 +7,7 @@ import { IFCLoader } from "web-ifc-three/IFCLoader";
 import type { Group } from "three";
 import * as THREE from "three";
 import { Pointer3D } from "./Pointer3D";
-import type { PresenceMap, SelectionMap, PointerPayload } from "../lib/usePresence";
+import type { PresenceMap, SelectionMap, PointerPayload, LevelMap } from "../lib/usePresence";
 
 const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, selections }: { 
   url: string, 
@@ -37,34 +37,6 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
       try {
         const model = await loader.loadAsync(url) as any;
         console.log("IFC loaded successfully", model);
-
-        // Center the model horizontally so its footprint
-        // is centered around the world origin (0, 0) in the ground plane.
-        // We only shift X and Z, leaving Y (height) unchanged.
-        if (model.geometry && model.geometry.attributes?.position) {
-          const geometry = model.geometry as THREE.BufferGeometry;
-          geometry.computeBoundingBox();
-          const box = geometry.boundingBox;
-          if (box) {
-            const center = new THREE.Vector3();
-            box.getCenter(center);
-
-            const positionAttr = geometry.getAttribute("position") as THREE.BufferAttribute;
-            const array = positionAttr.array as Float32Array;
-
-            for (let i = 0; i < array.length; i += 3) {
-              // X
-              array[i] -= center.x;
-              // Y stays as-is: array[i + 1]
-              // Z
-              array[i + 2] -= center.z;
-            }
-
-            positionAttr.needsUpdate = true;
-            geometry.computeBoundingBox();
-            geometry.computeBoundingSphere();
-          }
-        }
 
         modelRef.current = model;
         
@@ -494,12 +466,24 @@ const PointersLayer = ({ pointers }: { pointers: PresenceMap }) => {
   );
 };
 
-export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, onSelectionChange, followingUserId, onStopFollowing }: { 
+export const IfcViewer = ({
+  fileUrl,
+  pointers,
+  levels = {},
+  onCameraUpdate,
+  selections = {},
+  onSelectionChange,
+  onLevelChange,
+  followingUserId,
+  onStopFollowing
+}: {
   fileUrl: string | null;
   pointers: PresenceMap;
+  levels?: LevelMap;
   onCameraUpdate: (pos: [number, number, number], dir: [number, number, number]) => void;
   selections?: SelectionMap;
   onSelectionChange?: (id: number | null) => void;
+  onLevelChange?: (storyExpressId: number | null) => void;
   followingUserId?: string | null;
   onStopFollowing?: () => void;
 }) => {
@@ -515,12 +499,32 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
       setSelectedStory(null);
   }, [fileUrl]);
 
+  // When following another user, mirror their selected level (storey)
+  useEffect(() => {
+    if (!followingUserId) return;
+    if (!stories.length) return;
+
+    const leaderLevelId = levels[followingUserId];
+    if (leaderLevelId == null) return;
+
+    const targetStory = stories.find((s) => s.expressID === leaderLevelId) ?? null;
+    if (!targetStory) return;
+
+    setSelectedStory((prev: any | null) => {
+      if (prev && prev.expressID === targetStory.expressID) return prev;
+      if (targetStory.expressID != null) {
+        onLevelChange?.(targetStory.expressID);
+      }
+      return targetStory;
+    });
+  }, [followingUserId, levels, stories]);
+
   return (
     <div className="canvas-shell" ref={canvasRef} style={{ position: 'relative' }}>
       <Canvas 
         shadows 
         dpr={[1, 1.5]}
-        onPointerMissed={(event) => {
+        onPointerMissed={(event: any) => {
           // Primary button click on empty space => unselect
           if (event.button !== 0) return;
           if (typeof event.delta === "number" && event.delta > 5) return;
@@ -558,7 +562,15 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
                   onStoriesLoaded={(loadedStories) => {
                       setStories(loadedStories);
                       // Default to the highest storey (which will show all levels up to it)
-                      setSelectedStory((prev) => prev ?? (loadedStories[0] ?? null));
+                      setSelectedStory((prev: any) => {
+                        const next = prev ?? (loadedStories[0] ?? null);
+                        if (next?.expressID != null) {
+                          onLevelChange?.(next.expressID);
+                        } else {
+                          onLevelChange?.(null);
+                        }
+                        return next;
+                      });
                   }} 
                   selectedStory={selectedStory}
                   onSelectionChange={(id, props) => {
@@ -646,8 +658,8 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
       {stories.length > 0 && (
         <div style={{
             position: 'absolute',
-            top: 20,
-            right: 20,
+            top: 14,
+            right: 14,
             zIndex: 10
         }}>
             <select 
@@ -656,6 +668,7 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
                     const id = Number(e.target.value);
                     const story = stories.find(s => s.expressID === id) ?? null;
                     setSelectedStory(story);
+                    onLevelChange?.(story ? story.expressID : null);
                 }}
                 style={{
                     padding: '8px 12px',
@@ -664,13 +677,13 @@ export const IfcViewer = ({ fileUrl, pointers, onCameraUpdate, selections = {}, 
                     borderRadius: 8,
                     border: isLevelsHover ? '1px solid var(--accent)' : '1px solid #fed7aa',
                     outline: 'none',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    font: 'inherit',
+                    fontSize: "13px !important",
+                    // fontWeight: 600,
+                    fontFamily: "inherit",
                     cursor: 'pointer',
                     minWidth: '180px',
-                    height: '34px',
-                    lineHeight: '18px',
+                    // height: '34px',
+                    // lineHeight: '18px',
                     transition: 'all 0.2s ease',
                     WebkitAppearance: 'none',
                     MozAppearance: 'none',
