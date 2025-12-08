@@ -9,12 +9,22 @@ import * as THREE from "three";
 import { Pointer3D } from "./Pointer3D";
 import type { PresenceMap, SelectionMap, PointerPayload, LevelMap } from "../lib/usePresence";
 
-const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, selections }: { 
+const IfcModel = ({ 
+  url, 
+  onStoriesLoaded, 
+  selectedStory, 
+  onSelectionChange, 
+  selections,
+  activeFollowUserId,
+  onActiveRemoteSelectionPropsChange
+}: { 
   url: string, 
   onStoriesLoaded: (stories: any[]) => void, 
   selectedStory: any | null,
   onSelectionChange: (id: number | null, props?: any) => void,
-  selections: SelectionMap
+  selections: SelectionMap,
+  activeFollowUserId?: string | null,
+  onActiveRemoteSelectionPropsChange?: (props: any | null) => void
 }) => {
   const [displayModel, setDisplayModel] = useState<THREE.Object3D | null>(null);
   const modelRef = useRef<any>(null);
@@ -251,6 +261,56 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
         }
       });
   }, [selections, threeScene]);
+
+  // When following another user, load their selected element's properties locally
+  // so the follower can see a details panel for the leader's selection.
+  const lastRemoteExpressIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const loader = loaderRef.current;
+    const model = modelRef.current;
+
+    if (!loader || !model) return;
+    if (!activeFollowUserId) {
+      lastRemoteExpressIdRef.current = null;
+      onActiveRemoteSelectionPropsChange?.(null);
+      return;
+    }
+
+    const sel = selections[activeFollowUserId];
+    const expressId = sel?.expressId ?? null;
+
+    if (!expressId) {
+      lastRemoteExpressIdRef.current = null;
+      onActiveRemoteSelectionPropsChange?.(null);
+      return;
+    }
+
+    if (lastRemoteExpressIdRef.current === expressId) {
+      return;
+    }
+    lastRemoteExpressIdRef.current = expressId;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const props = await loader.ifcManager.getItemProperties(model.modelID, expressId);
+        if (!cancelled) {
+          onActiveRemoteSelectionPropsChange?.(props ?? null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.warn("[IfcModel] Failed to load remote selection props", e);
+          onActiveRemoteSelectionPropsChange?.(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFollowUserId, selections, onActiveRemoteSelectionPropsChange]);
 
   const handleClick = async (event: any) => {
     // Only handle primary button clicks
@@ -500,6 +560,7 @@ export const IfcViewer = ({
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStory, setSelectedStory] = useState<any | null>(null);
   const [selectedProps, setSelectedProps] = useState<any | null>(null);
+  const [selectedByUserId, setSelectedByUserId] = useState<string | null>(null);
   const [isLevelsHover, setIsLevelsHover] = useState(false);
 
   // Reset stories when file changes
@@ -586,11 +647,26 @@ export const IfcViewer = ({
                       onSelectionChange?.(id);
                       if (id && props) {
                           setSelectedProps(props);
+                          setSelectedByUserId(null);
                       } else {
                           setSelectedProps(null);
+                          setSelectedByUserId(null);
                       }
                   }}
                   selections={selections}
+                  activeFollowUserId={followingUserId}
+                  onActiveRemoteSelectionPropsChange={(props) => {
+                    // Only mirror remote selection into the details box
+                    // when we are actively following someone.
+                    if (!followingUserId) return;
+                    if (props) {
+                      setSelectedProps(props);
+                      setSelectedByUserId(followingUserId);
+                    } else {
+                      setSelectedProps(null);
+                      setSelectedByUserId(null);
+                    }
+                  }}
               />
             </Stage>
           ) : null}
@@ -626,6 +702,11 @@ export const IfcViewer = ({
                 <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Selection
                 </h3>
+                {selectedByUserId && pointers[selectedByUserId] && (
+                  <div style={{ marginLeft: 8, fontSize: 11, color: '#64748b' }}>
+                    Following @{pointers[selectedByUserId].label}
+                  </div>
+                )}
                 <button 
                   onClick={() => setSelectedProps(null)}
                   style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px', padding: '0 4px', lineHeight: 1 }}
