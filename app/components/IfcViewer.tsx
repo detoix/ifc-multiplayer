@@ -30,7 +30,16 @@ const IfcModel = ({ url, onStoriesLoaded, selectedStory, onSelectionChange, sele
     console.log("Starting IFC load for:", url);
 
     const loader = new IFCLoader();
-    loader.ifcManager.setWasmPath("/wasm/");
+    // Ensure the wasm file is loaded from the public `/wasm` folder
+    // regardless of where the bundled script lives.
+    const ifcManager: any = (loader as any).ifcManager;
+    if (ifcManager?.state?.api?.SetWasmPath) {
+      // Use absolute mode so `locateFile` returns `/wasm/web-ifc.wasm`
+      ifcManager.state.api.SetWasmPath("/wasm/", true);
+    } else if (ifcManager?.setWasmPath) {
+      // Fallback for older versions (relative path)
+      ifcManager.setWasmPath("/wasm/");
+    }
     loaderRef.current = loader;
     
     const loadModel = async () => {
