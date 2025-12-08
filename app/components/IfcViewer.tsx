@@ -139,12 +139,11 @@ const IfcModel = ({
     const loader = loaderRef.current;
     const model = modelRef.current;
     if (!loader || !model) return;
-
     const modelID = model.modelID;
 
     if (!selectedStory) {
       // Show whole building
-      model.visible = true;
+      setDisplayModel(model);
       try {
         loader.ifcManager.removeSubset(modelID, undefined, "storey-subset");
       } catch (e) {
@@ -186,13 +185,21 @@ const IfcModel = ({
       // De-duplicate IDs
       ids = Array.from(new Set(ids));
 
-      loader.ifcManager.createSubset({
+      const subset = loader.ifcManager.createSubset({
         modelID,
         ids,
-        scene: threeScene,
         removePrevious: true,
         customID: "storey-subset"
       });
+
+      // Use the storey subset as the displayed model so that
+      // raycasting and click events hit the currently visible geometry.
+      if (subset) {
+        setDisplayModel(subset);
+      } else {
+        setDisplayModel(model);
+      }
+
       visibleElementIdsRef.current = new Set(ids);
     } catch (e) {
       console.error("Failed to create storey subset", e);
