@@ -24,7 +24,7 @@ body {
     radial-gradient(circle at 60% 40%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.6)),
     #f1f5f9;
   color: var(--text);
-  min-height: 100vh;
+  height: 100vh;
 }
 
 body {

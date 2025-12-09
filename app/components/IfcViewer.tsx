@@ -568,6 +568,7 @@ export const IfcViewer = ({
   onStopFollowing,
   enableNanoBanana = false,
   nanoBananaPrompt,
+  showLevelSelector = true,
 }: {
   fileUrl: string | null;
   pointers: PresenceMap;
@@ -580,6 +581,7 @@ export const IfcViewer = ({
   onStopFollowing?: () => void;
   enableNanoBanana?: boolean;
   nanoBananaPrompt?: string;
+  showLevelSelector?: boolean;
 }) => {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1020,7 +1022,7 @@ export const IfcViewer = ({
       )}
       
       {/* Story Dropdown */}
-      {stories.length > 0 && (
+      {showLevelSelector && stories.length > 0 && (
         <div style={{
             position: 'absolute',
             top: 14,

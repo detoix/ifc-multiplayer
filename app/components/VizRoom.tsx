@@ -55,6 +55,7 @@ export function VizRoom() {
           onCameraUpdate={handleCameraUpdate}
           enableNanoBanana
           nanoBananaPrompt={prompt}
+          showLevelSelector={false}
         />
 
       {/* Fixed prompt overlay */}
