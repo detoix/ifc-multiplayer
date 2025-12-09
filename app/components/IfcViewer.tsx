@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useState, useRef } from "react";
+import React, { Suspense, useEffect, useState, useRef, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Grid, OrbitControls, PerspectiveCamera, Stage } from "@react-three/drei";
 import { IFCLoader } from "web-ifc-three/IFCLoader";
@@ -565,7 +565,9 @@ export const IfcViewer = ({
   onSelectionChange,
   onLevelChange,
   followingUserId,
-  onStopFollowing
+  onStopFollowing,
+  enableNanoBanana = false,
+  nanoBananaPrompt,
 }: {
   fileUrl: string | null;
   pointers: PresenceMap;
@@ -576,14 +578,153 @@ export const IfcViewer = ({
   onLevelChange?: (storyExpressId: number | null) => void;
   followingUserId?: string | null;
   onStopFollowing?: () => void;
+  enableNanoBanana?: boolean;
+  nanoBananaPrompt?: string;
 }) => {
   const canvasRef = React.useRef<HTMLDivElement>(null);
+  const idleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const movementTokenRef = useRef(0);
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStory, setSelectedStory] = useState<any | null>(null);
   const [selectedProps, setSelectedProps] = useState<any | null>(null);
   const [selectedByUserId, setSelectedByUserId] = useState<string | null>(null);
   const [isLevelsHover, setIsLevelsHover] = useState(false);
   const [orbitTarget, setOrbitTarget] = useState<[number, number, number] | null>(null);
+  const [overlayImageUrl, setOverlayImageUrl] = useState<string | null>(null);
+  const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
+  const [idleCountdown, setIdleCountdown] = useState<number | null>(null);
+  const idleDeadlineRef = useRef<number | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearIdleTimeout = useCallback(() => {
+    if (idleTimeoutRef.current) {
+      clearTimeout(idleTimeoutRef.current);
+      idleTimeoutRef.current = null;
+    }
+
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    idleDeadlineRef.current = null;
+    setIdleCountdown(null);
+  }, []);
+
+  const handleCameraIdle = useCallback(
+    async (tokenAtSchedule: number) => {
+      if (!enableNanoBanana) return;
+      if (!fileUrl) return;
+
+      // If camera moved after this idle check was scheduled, abort.
+      if (movementTokenRef.current !== tokenAtSchedule) return;
+
+      if (isGeneratingOverlay || overlayImageUrl) return;
+
+      const container = canvasRef.current;
+      if (!container) return;
+
+      const canvas = container.querySelector("canvas") as HTMLCanvasElement | null;
+      if (!canvas) return;
+
+      try {
+        setIsGeneratingOverlay(true);
+
+        const imageData = canvas.toDataURL("image/png");
+
+        console.log("[IfcViewer] Sending screenshot to /api/nano-banana", {
+          length: imageData.length,
+          preview: imageData.slice(0, 64)
+        });
+
+        const response = await fetch("/api/nano-banana", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            imageData,
+            prompt: nanoBananaPrompt,
+          }),
+        });
+
+        if (!response.ok) {
+          console.error("Nano Banana Pro API error", await response.text());
+          return;
+        }
+
+        const data = await response.json();
+        const imageUrl = data?.imageUrl as string | undefined;
+
+        // Camera may have moved while the request was in flight.
+        if (!imageUrl || movementTokenRef.current !== tokenAtSchedule) {
+          return;
+        }
+
+        setOverlayImageUrl(imageUrl);
+      } catch (err) {
+        console.error("Failed to call Nano Banana Pro API", err);
+      } finally {
+        setIsGeneratingOverlay(false);
+      }
+    },
+    [fileUrl, isGeneratingOverlay, overlayImageUrl, enableNanoBanana, nanoBananaPrompt]
+  );
+
+  const displayIdleSeconds =
+    idleCountdown != null ? Math.max(0, Math.ceil(idleCountdown)) : null;
+
+  const handleCameraUpdate = useCallback(
+    (pos: [number, number, number], dir: [number, number, number]) => {
+      // Always forward to multiplayer presence
+      onCameraUpdate(pos, dir);
+
+      if (!enableNanoBanana) {
+        return;
+      }
+
+      movementTokenRef.current += 1;
+      const tokenAtSchedule = movementTokenRef.current;
+
+      // Any camera movement should hide the overlay image immediately.
+      if (overlayImageUrl) {
+        setOverlayImageUrl(null);
+      }
+
+      clearIdleTimeout();
+
+      // Schedule a debounced idle check 3 seconds after the last camera change.
+      const now = performance.now();
+      idleDeadlineRef.current = now + 3000;
+      setIdleCountdown(3);
+
+      countdownIntervalRef.current = setInterval(() => {
+        if (!idleDeadlineRef.current) return;
+        const remainingMs = idleDeadlineRef.current - performance.now();
+        const remainingSec = remainingMs / 1000;
+        if (remainingSec <= 0) {
+          setIdleCountdown(0);
+          if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+            countdownIntervalRef.current = null;
+          }
+          return;
+        }
+        setIdleCountdown(Math.max(0, remainingSec));
+      }, 200);
+
+      idleTimeoutRef.current = setTimeout(() => {
+        void handleCameraIdle(tokenAtSchedule);
+      }, 3000);
+    },
+    [onCameraUpdate, clearIdleTimeout, handleCameraIdle, overlayImageUrl, enableNanoBanana]
+  );
+
+  // Clear timers on unmount
+  useEffect(() => {
+    return () => {
+      clearIdleTimeout();
+    };
+  }, [clearIdleTimeout]);
 
   // Reset stories when file changes
   useEffect(() => {
@@ -612,10 +753,25 @@ export const IfcViewer = ({
   }, [followingUserId, levels, stories]);
 
   return (
-    <div className="canvas-shell" ref={canvasRef} style={{ position: 'relative' }}>
+    <div
+      className="canvas-shell"
+      ref={canvasRef}
+      style={
+        enableNanoBanana
+          ? {
+              position: "relative",
+              width: "calc(100vw - 48px)",
+              height: "calc(100vh - 48px)",
+              borderRadius: 0,
+              border: "none",
+            }
+          : { position: "relative" }
+      }
+    >
       <Canvas 
         shadows 
         dpr={[1, 1.5]}
+        gl={enableNanoBanana ? { preserveDrawingBuffer: true } : undefined}
         onPointerMissed={(event: any) => {
           // Primary button click on empty space => unselect
           if (event.button !== 0) return;
@@ -628,7 +784,7 @@ export const IfcViewer = ({
         <ambientLight intensity={0.5} />
         <directionalLight position={[10, 20, 10]} castShadow intensity={1} />
         
-        <CameraTracker onUpdate={onCameraUpdate} />
+        <CameraTracker onUpdate={handleCameraUpdate} />
         
         {/* Helper to follow another user */}
         {followingUserId && pointers[followingUserId] && (
@@ -711,6 +867,95 @@ export const IfcViewer = ({
           target={orbitTarget ?? [0, 0, 0]}
         />
       </Canvas>
+
+      {/* AI Render Overlay (Nano Banana Pro) */}
+      {enableNanoBanana && overlayImageUrl && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 5,
+            pointerEvents: "none",
+          }}
+        >
+          <img
+            src={overlayImageUrl}
+            alt="Nano Banana Pro render"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        </div>
+      )}
+
+      {/* Single Nano Banana status / countdown banner (top center) */}
+      {enableNanoBanana && (
+        <div
+          style={{
+            position: "absolute",
+            top: 24,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 7,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "12px 20px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.96)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 10px 30px rgba(15,23,42,0.15)",
+              fontSize: 13,
+              color: "var(--text)",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 24,
+                height: 24,
+                borderRadius: "999px",
+                background: "rgba(34,197,94,0.15)",
+                fontSize: 14,
+              }}
+            >
+              📷
+            </span>
+
+            {displayIdleSeconds != null && displayIdleSeconds > 0 && !isGeneratingOverlay && !overlayImageUrl ? (
+              <>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    fontSize: 20,
+                    minWidth: 24,
+                    textAlign: "center",
+                  }}
+                >
+                  {displayIdleSeconds}
+                </span>
+                <span>Hold camera still to capture this view for AI render…</span>
+              </>
+            ) : isGeneratingOverlay ? (
+              <span>Sending view to AI renderer…</span>
+            ) : overlayImageUrl ? (
+              <span>AI render ready – move camera to reset.</span>
+            ) : (
+              <span>Move the camera, then hold still for 3 seconds to generate an AI render.</span>
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Selection Info */}
       {selectedProps && (

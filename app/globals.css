@@ -41,7 +41,7 @@ a {
 
 main {
   width: 100%;
-  max-width: 1400px;
+  /* max-width: 1400px; */
   background: rgba(255, 255, 255, 0.95);
   /* Higher opacity for readability */
   backdrop-filter: blur(20px);
