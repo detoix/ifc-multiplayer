@@ -763,7 +763,7 @@ export const IfcViewer = ({
           ? {
               position: "relative",
               width: "calc(100vw - 48px)",
-              height: "calc(100vh - 48px)",
+              height: "calc(100dvh - 48px)",
               borderRadius: 16,
               border: "none",
             }
