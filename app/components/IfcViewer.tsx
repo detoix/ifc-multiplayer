@@ -762,8 +762,10 @@ export const IfcViewer = ({
         enableNanoBanana
           ? {
               position: "relative",
-              width: "calc(100vw - 48px)",
-              height: "calc(100dvh - 48px)",
+              width: "100%",
+              height: "100%",
+              // width: "calc(100vw - 48px)",
+              // height: "calc(100dvh - 48px)",
               borderRadius: 16,
               border: "none",
             }
