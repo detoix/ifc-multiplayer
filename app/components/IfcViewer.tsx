@@ -568,6 +568,7 @@ export const IfcViewer = ({
   onStopFollowing,
   enableNanoBanana = false,
   nanoBananaPrompt,
+  nanoBananaPromptVersion,
   showLevelSelector = true,
 }: {
   fileUrl: string | null;
@@ -581,6 +582,7 @@ export const IfcViewer = ({
   onStopFollowing?: () => void;
   enableNanoBanana?: boolean;
   nanoBananaPrompt?: string;
+  nanoBananaPromptVersion?: number;
   showLevelSelector?: boolean;
 }) => {
   const canvasRef = React.useRef<HTMLDivElement>(null);
@@ -620,7 +622,7 @@ export const IfcViewer = ({
       // If camera moved after this idle check was scheduled, abort.
       if (movementTokenRef.current !== tokenAtSchedule) return;
 
-      if (isGeneratingOverlay || overlayImageUrl) return;
+      if (isGeneratingOverlay) return;
 
       const container = canvasRef.current;
       if (!container) return;
@@ -669,8 +671,48 @@ export const IfcViewer = ({
         setIsGeneratingOverlay(false);
       }
     },
-    [fileUrl, isGeneratingOverlay, overlayImageUrl, enableNanoBanana, nanoBananaPrompt]
+    [fileUrl, isGeneratingOverlay, enableNanoBanana, nanoBananaPrompt]
   );
+
+  const scheduleNanoBananaIdleCheck = useCallback(() => {
+    if (!enableNanoBanana) {
+      return;
+    }
+
+    movementTokenRef.current += 1;
+    const tokenAtSchedule = movementTokenRef.current;
+
+    // Any change (camera or prompt preset) should hide the overlay image immediately.
+    if (overlayImageUrl) {
+      setOverlayImageUrl(null);
+    }
+
+    clearIdleTimeout();
+
+    // Schedule a debounced idle check 3 seconds after the last change.
+    const now = performance.now();
+    idleDeadlineRef.current = now + 3000;
+    setIdleCountdown(3);
+
+    countdownIntervalRef.current = setInterval(() => {
+      if (!idleDeadlineRef.current) return;
+      const remainingMs = idleDeadlineRef.current - performance.now();
+      const remainingSec = remainingMs / 1000;
+      if (remainingSec <= 0) {
+        setIdleCountdown(0);
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        return;
+      }
+      setIdleCountdown(Math.max(0, remainingSec));
+    }, 200);
+
+    idleTimeoutRef.current = setTimeout(() => {
+      void handleCameraIdle(tokenAtSchedule);
+    }, 3000);
+  }, [clearIdleTimeout, handleCameraIdle, overlayImageUrl, enableNanoBanana]);
 
   const displayIdleSeconds =
     idleCountdown != null ? Math.max(0, Math.ceil(idleCountdown)) : null;
@@ -680,46 +722,27 @@ export const IfcViewer = ({
       // Always forward to multiplayer presence
       onCameraUpdate(pos, dir);
 
-      if (!enableNanoBanana) {
-        return;
-      }
-
-      movementTokenRef.current += 1;
-      const tokenAtSchedule = movementTokenRef.current;
-
-      // Any camera movement should hide the overlay image immediately.
-      if (overlayImageUrl) {
-        setOverlayImageUrl(null);
-      }
-
-      clearIdleTimeout();
-
-      // Schedule a debounced idle check 3 seconds after the last camera change.
-      const now = performance.now();
-      idleDeadlineRef.current = now + 3000;
-      setIdleCountdown(3);
-
-      countdownIntervalRef.current = setInterval(() => {
-        if (!idleDeadlineRef.current) return;
-        const remainingMs = idleDeadlineRef.current - performance.now();
-        const remainingSec = remainingMs / 1000;
-        if (remainingSec <= 0) {
-          setIdleCountdown(0);
-          if (countdownIntervalRef.current) {
-            clearInterval(countdownIntervalRef.current);
-            countdownIntervalRef.current = null;
-          }
-          return;
-        }
-        setIdleCountdown(Math.max(0, remainingSec));
-      }, 200);
-
-      idleTimeoutRef.current = setTimeout(() => {
-        void handleCameraIdle(tokenAtSchedule);
-      }, 3000);
+      scheduleNanoBananaIdleCheck();
     },
-    [onCameraUpdate, clearIdleTimeout, handleCameraIdle, overlayImageUrl, enableNanoBanana]
+    [onCameraUpdate, scheduleNanoBananaIdleCheck]
   );
+
+  // When the prompt preset changes (via arrows), treat it like a camera movement:
+  // clear the current overlay and restart the idle countdown.
+  const lastPromptVersionRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (nanoBananaPromptVersion == null) return;
+    if (lastPromptVersionRef.current === nanoBananaPromptVersion) return;
+
+    if (lastPromptVersionRef.current === null) {
+      // Skip scheduling on the initial value; only react to user-driven changes.
+      lastPromptVersionRef.current = nanoBananaPromptVersion;
+      return;
+    }
+
+    lastPromptVersionRef.current = nanoBananaPromptVersion;
+    scheduleNanoBananaIdleCheck();
+  }, [nanoBananaPromptVersion, scheduleNanoBananaIdleCheck]);
 
   // Clear timers on unmount
   useEffect(() => {
@@ -764,9 +787,6 @@ export const IfcViewer = ({
               position: "relative",
               width: "100%",
               height: "100%",
-              // width: "calc(100vw - 48px)",
-              // height: "calc(100dvh - 48px)",
-              borderRadius: 16,
               border: "none",
             }
           : { position: "relative" }
@@ -913,7 +933,7 @@ export const IfcViewer = ({
               alignItems: "center",
               gap: 10,
               padding: "12px 20px",
-              borderRadius: 16,
+              borderRadius: 8,
               background: "rgba(255,255,255,0.96)",
               border: "1px solid var(--border)",
               boxShadow: "0 10px 30px rgba(15,23,42,0.15)",
@@ -951,7 +971,21 @@ export const IfcViewer = ({
                 <span>Hold camera still to capture this view for AI render…</span>
               </>
             ) : isGeneratingOverlay ? (
-              <span>Sending view to AI renderer…</span>
+              <>
+                <span
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: "999px",
+                    border: "2px solid rgba(148,163,184,0.4)",
+                    borderTopColor: "var(--accent)",
+                    animation: "spin 0.8s linear infinite",
+                    display: "inline-block",
+                    marginRight: 8,
+                  }}
+                />
+                <span>Sending view to AI renderer…</span>
+              </>
             ) : overlayImageUrl ? (
               <span>AI render ready – move camera to reset.</span>
             ) : (
@@ -970,7 +1004,7 @@ export const IfcViewer = ({
             zIndex: 10,
             background: 'white',
             padding: '16px',
-            borderRadius: '12px',
+            borderRadius: '8px',
             border: '1px solid #e2e8f0',
             color: 'var(--text)',
             maxWidth: '300px',
@@ -1082,7 +1116,7 @@ export const IfcViewer = ({
             pointerEvents: "none",
             background: "rgba(255,255,255,0.8)",
             padding: "8px 16px",
-            borderRadius: "20px",
+            borderRadius: "8px",
             backdropFilter: "blur(4px)"
           }}
         >

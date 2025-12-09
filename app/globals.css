@@ -49,8 +49,8 @@ main {
   backdrop-filter: blur(20px);
   /* Stronger blur */
   border: 1px solid white;
-  border-radius: 20px;
-  /* Softer, larger radius like the shapes */
+  border-radius: 8px;
+  /* Medium radius for app shell */
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
@@ -61,7 +61,7 @@ button {
 
 .dropzone {
   border: 2px dashed #cbd5e1;
-  border-radius: 16px;
+  border-radius: 8px;
   padding: 40px;
   background: rgba(248, 250, 252, 0.8);
   transition: all 0.2s ease;
@@ -98,7 +98,7 @@ button {
   height: 75vh;
   background: #f8fafc;
   /* Light grey canvas placeholder */
-  border-radius: 16px;
+  border-radius: 8px;
   border: 1px solid #e2e8f0;
   overflow: hidden;
   box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.02);
@@ -134,8 +134,13 @@ button {
 
 @media (max-width: 900px) {
   body {
-    padding: 12px;
+    padding: 0;
     align-items: flex-start;
+  }
+
+  main {
+    border-radius: 0;
+    border: none;
   }
 
   .grid>section {
@@ -154,7 +159,7 @@ button {
 
   .canvas-shell {
     height: 65vh;
-    border-radius: 12px;
+    border-radius: 0;
   }
 }
 
@@ -163,7 +168,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-radius: 20px;
+  border-radius: 8px;
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   font-size: 13px;
@@ -195,4 +200,10 @@ small {
   font-size: 12px;
   line-height: 1.6;
   display: block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

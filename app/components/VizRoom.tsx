@@ -4,13 +4,61 @@ import { useEffect, useState, useCallback } from "react";
 import { IfcViewer } from "@/app/components/IfcViewer";
 import type { PresenceMap } from "@/app/lib/usePresence";
 
+const PROMPT_PRESETS = [
+  {
+    id: "current",
+    label: "Default prompt ✨",
+    initial:
+      "Enhance this architectural 3D scene into a high-quality, photorealistic render from the same camera angle. Keep all building geometry, shapes, and layout strictly unchanged—do not move, remove, or add any objects, and do not alter the composition or perspective. Add serene, natural surroundings, enrich colors, and improve lighting and materials while preserving the original structure exactly.",
+  },
+  {
+    id: "winter",
+    label: "Winter prompt ❄️",
+    initial:
+      "Enhance this architectural 3D scene into a high-quality, photorealistic winter render from the same camera angle. Keep all geometry and composition unchanged, but transform the environment into a calm winter setting with soft snow, overcast sky, warm interior lighting, and subtle frost on exterior materials.",
+  },
+  {
+    id: "spring",
+    label: "Spring prompt 🌱",
+    initial:
+      "Enhance this architectural 3D scene into a high-quality, photorealistic spring render from the same camera angle. Keep all geometry and composition unchanged, but add soft spring sunlight, fresh greenery, blossoming trees, and bright yet natural colors while preserving the original structure exactly.",
+  },
+  {
+    id: "village",
+    label: "Village prompt 🏡",
+    initial:
+      "Enhance this architectural 3D scene into a high-quality, photorealistic render set in a small village context. Keep all building geometry and composition unchanged, but surround it with low-rise neighboring structures, trees, narrow streets, and human-scale details while preserving the original building footprint.",
+  },
+  {
+    id: "city",
+    label: "City prompt 🌆",
+    initial:
+      "Enhance this architectural 3D scene into a high-quality, photorealistic render set in a dense city context. Keep all building geometry and composition unchanged, but place it among taller neighboring buildings, paved public space, street furniture, and subtle urban details while preserving the original structure exactly.",
+  },
+];
+
 export function VizRoom() {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState<string>(
-    "Enhance this architectural 3D scene into a high-quality, photorealistic render from the same camera angle. Keep all building geometry, shapes, and layout strictly unchanged—do not move, remove, or add any objects, and do not alter the composition or perspective. Add serene, natural surroundings, enrich colors, and improve lighting and materials while preserving the original structure exactly."
+  const [activePresetIndex, setActivePresetIndex] = useState(0);
+  const [prompts, setPrompts] = useState<string[]>(() =>
+    PROMPT_PRESETS.map((preset) => preset.initial)
   );
+  const [nanoBananaPromptVersion, setNanoBananaPromptVersion] = useState(0);
+  const [isPromptFocused, setIsPromptFocused] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const emptyPointers: PresenceMap = {};
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const updateIsMobile = () => {
+        setIsMobile(window.innerWidth <= 900);
+      };
+      updateIsMobile();
+      window.addEventListener("resize", updateIsMobile);
+      return () => window.removeEventListener("resize", updateIsMobile);
+    }
+  }, []);
 
   useEffect(() => {
     fetch("/api/room-file?roomId=demo")
@@ -38,6 +86,36 @@ export function VizRoom() {
     }
   }, []);
 
+  const handlePrevPreset = useCallback(() => {
+    setActivePresetIndex((current) => {
+      const nextIndex = (current - 1 + PROMPT_PRESETS.length) % PROMPT_PRESETS.length;
+      return nextIndex;
+    });
+    setNanoBananaPromptVersion((v) => v + 1);
+  }, []);
+
+  const handleNextPreset = useCallback(() => {
+    setActivePresetIndex((current) => {
+      const nextIndex = (current + 1) % PROMPT_PRESETS.length;
+      return nextIndex;
+    });
+    setNanoBananaPromptVersion((v) => v + 1);
+  }, []);
+
+  const handlePromptChange = useCallback(
+    (value: string) => {
+      setPrompts((current) => {
+        const next = [...current];
+        next[activePresetIndex] = value;
+        return next;
+      });
+    },
+    [activePresetIndex]
+  );
+
+  const currentPrompt = prompts[activePresetIndex] ?? "";
+  const currentPreset = PROMPT_PRESETS[activePresetIndex];
+
   const handleCameraUpdate = useCallback(
     (_pos: [number, number, number], _dir: [number, number, number]) => {
       // No multiplayer presence in /viz; we only care about the AI render.
@@ -54,7 +132,8 @@ export function VizRoom() {
           pointers={emptyPointers}
           onCameraUpdate={handleCameraUpdate}
           enableNanoBanana
-          nanoBananaPrompt={prompt}
+          nanoBananaPrompt={currentPrompt}
+          nanoBananaPromptVersion={nanoBananaPromptVersion}
           showLevelSelector={false}
         />
 
@@ -63,12 +142,12 @@ export function VizRoom() {
         style={{
           position: "fixed",
           left: "50%",
-          bottom: 24,
+          bottom: isMobile && isPromptFocused ? "40vh" : 24,
           transform: "translateX(-50%)",
           zIndex: 30,
           width: "min(960px, 100% - 32px)",
           padding: 20,
-          borderRadius: 16,
+          borderRadius: 8,
           border: "1px solid var(--border)",
           background: "rgba(255,255,255,0.96)",
           color: "var(--text)",
@@ -80,31 +159,82 @@ export function VizRoom() {
             display: "block",
             fontSize: 11,
             fontWeight: 600,
-            marginBottom: 4,
+            marginBottom: 6,
             textTransform: "uppercase",
             letterSpacing: "0.06em",
             color: "var(--text-muted)",
           }}
         >
-          AI render prompt
+          AI render prompt · {currentPreset.label}
         </label>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={4}
+        <div
           style={{
-            width: "100%",
-            resize: "none",
-            borderRadius: 16,
-            border: "1px solid var(--border)",
-            padding: "12px 14px",
-            fontSize: 13,
-            fontFamily: "inherit",
-            outline: "none",
-            background: "rgba(255,255,255,0.95)",
-            color: "var(--text)",
+            display: "flex",
+            alignItems: "stretch",
+            gap: 8,
           }}
-        />
+        >
+          <button
+            type="button"
+            onClick={handlePrevPreset}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              width: 32,
+              minWidth: 32,
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "white",
+              color: "var(--text-muted)",
+              fontSize: 16,
+              alignSelf: "stretch",
+            }}
+          >
+            ←
+          </button>
+          <textarea
+            value={currentPrompt}
+            onChange={(e) => handlePromptChange(e.target.value)}
+            onFocus={() => setIsPromptFocused(true)}
+            onBlur={() => setIsPromptFocused(false)}
+            rows={4}
+            style={{
+              flex: 1,
+              width: "100%",
+              resize: "none",
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              padding: "12px 14px",
+              fontSize: 13,
+              fontFamily: "inherit",
+              outline: "none",
+              background: "rgba(255,255,255,0.95)",
+              color: "var(--text)",
+            }}
+          />
+          <button
+            type="button"
+            onClick={handleNextPreset}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              width: 32,
+              minWidth: 32,
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "white",
+              color: "var(--text-muted)",
+              fontSize: 16,
+              alignSelf: "stretch",
+            }}
+          >
+            →
+          </button>
+        </div>
       </div>
     </>
   );
