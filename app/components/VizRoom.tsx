@@ -68,7 +68,7 @@ export function VizRoom() {
           zIndex: 30,
           width: "min(960px, 100% - 32px)",
           padding: 20,
-          borderRadius: 24,
+          borderRadius: 16,
           border: "1px solid var(--border)",
           background: "rgba(255,255,255,0.96)",
           color: "var(--text)",

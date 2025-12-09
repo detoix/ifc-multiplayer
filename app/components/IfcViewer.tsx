@@ -764,7 +764,7 @@ export const IfcViewer = ({
               position: "relative",
               width: "calc(100vw - 48px)",
               height: "calc(100vh - 48px)",
-              borderRadius: 0,
+              borderRadius: 16,
               border: "none",
             }
           : { position: "relative" }
@@ -911,7 +911,7 @@ export const IfcViewer = ({
               alignItems: "center",
               gap: 10,
               padding: "12px 20px",
-              borderRadius: 999,
+              borderRadius: 16,
               background: "rgba(255,255,255,0.96)",
               border: "1px solid var(--border)",
               boxShadow: "0 10px 30px rgba(15,23,42,0.15)",
