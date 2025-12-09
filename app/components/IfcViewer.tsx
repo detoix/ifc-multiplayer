@@ -16,7 +16,8 @@ const IfcModel = ({
   onSelectionChange, 
   selections,
   activeFollowUserId,
-  onActiveRemoteSelectionPropsChange
+  onActiveRemoteSelectionPropsChange,
+  onModelCenterChange
 }: { 
   url: string, 
   onStoriesLoaded: (stories: any[]) => void, 
@@ -24,7 +25,8 @@ const IfcModel = ({
   onSelectionChange: (id: number | null, props?: any) => void,
   selections: SelectionMap,
   activeFollowUserId?: string | null,
-  onActiveRemoteSelectionPropsChange?: (props: any | null) => void
+  onActiveRemoteSelectionPropsChange?: (props: any | null) => void,
+  onModelCenterChange?: (center: [number, number, number]) => void
 }) => {
   const [displayModel, setDisplayModel] = useState<THREE.Object3D | null>(null);
   const modelRef = useRef<any>(null);
@@ -66,6 +68,18 @@ const IfcModel = ({
             child.receiveShadow = true;
           }
         });
+
+        // Compute a reasonable orbit target based on the model bounds
+        try {
+          const box = new THREE.Box3().setFromObject(model);
+          if (!box.isEmpty()) {
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            onModelCenterChange?.([center.x, center.y, center.z]);
+          }
+        } catch (e) {
+          console.warn("Failed to compute model bounds for orbit target", e);
+        }
 
         setDisplayModel(model);
 
@@ -569,6 +583,7 @@ export const IfcViewer = ({
   const [selectedProps, setSelectedProps] = useState<any | null>(null);
   const [selectedByUserId, setSelectedByUserId] = useState<string | null>(null);
   const [isLevelsHover, setIsLevelsHover] = useState(false);
+  const [orbitTarget, setOrbitTarget] = useState<[number, number, number] | null>(null);
 
   // Reset stories when file changes
   useEffect(() => {
@@ -674,19 +689,27 @@ export const IfcViewer = ({
                       setSelectedByUserId(null);
                     }
                   }}
+                  onModelCenterChange={(center) => {
+                    setOrbitTarget(center);
+                  }}
               />
             </Stage>
           ) : null}
         </Suspense>
-        <Grid
+        {/* <Grid
           args={[80, 80]}
           position={[0, -0.001, 0]}
           cellColor="#1e293b"
           sectionColor="#0f172a"
           fadeDistance={60}
           fadeStrength={0.8}
+        /> */}
+        <OrbitControls
+          enableDamping
+          makeDefault
+          enabled={!followingUserId}
+          target={orbitTarget ?? [0, 0, 0]}
         />
-        <OrbitControls enableDamping makeDefault enabled={!followingUserId} />
       </Canvas>
       
       {/* Selection Info */}
