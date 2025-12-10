@@ -131,6 +131,7 @@ export function VizRoom() {
           fileUrl={fileUrl}
           pointers={emptyPointers}
           onCameraUpdate={handleCameraUpdate}
+          enableSelection={false}
           enableNanoBanana
           nanoBananaPrompt={currentPrompt}
           nanoBananaPromptVersion={nanoBananaPromptVersion}
@@ -177,6 +178,12 @@ export function VizRoom() {
           <button
             type="button"
             onClick={handlePrevPreset}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--border)";
+            }}
             style={{
               border: "1px solid var(--border)",
               borderRadius: 8,
@@ -196,7 +203,7 @@ export function VizRoom() {
           </button>
           <textarea
             value={currentPrompt}
-            onChange={(e) => handlePromptChange(e.target.value)}
+            readOnly
             onFocus={() => setIsPromptFocused(true)}
             onBlur={() => setIsPromptFocused(false)}
             rows={4}
@@ -205,7 +212,7 @@ export function VizRoom() {
               width: "100%",
               resize: "none",
               borderRadius: 8,
-              border: "1px solid var(--border)",
+              border: "none",
               padding: "12px 14px",
               fontSize: 13,
               fontFamily: "inherit",
@@ -217,6 +224,12 @@ export function VizRoom() {
           <button
             type="button"
             onClick={handleNextPreset}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--accent)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--border)";
+            }}
             style={{
               border: "1px solid var(--border)",
               borderRadius: 8,

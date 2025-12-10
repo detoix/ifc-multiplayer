@@ -15,6 +15,7 @@ const IfcModel = ({
   selectedStory, 
   onSelectionChange, 
   selections,
+  enableSelection = true,
   activeFollowUserId,
   onActiveRemoteSelectionPropsChange,
   onModelCenterChange,
@@ -26,6 +27,7 @@ const IfcModel = ({
   selectedStory: any | null,
   onSelectionChange: (id: number | null, props?: any) => void,
   selections: SelectionMap,
+  enableSelection?: boolean,
   activeFollowUserId?: string | null,
   onActiveRemoteSelectionPropsChange?: (props: any | null) => void,
   onModelCenterChange?: (center: [number, number, number]) => void,
@@ -340,6 +342,8 @@ const IfcModel = ({
   }, [activeFollowUserId, selections, onActiveRemoteSelectionPropsChange]);
 
   const handleClick = async (event: any) => {
+    if (!enableSelection) return;
+
     // Only handle primary button clicks
     if (event.button !== 0) return;
 
@@ -572,6 +576,7 @@ export const IfcViewer = ({
   onLevelChange,
   followingUserId,
   onStopFollowing,
+  enableSelection = true,
   enableNanoBanana = false,
   nanoBananaPrompt,
   nanoBananaPromptVersion,
@@ -586,6 +591,7 @@ export const IfcViewer = ({
   onLevelChange?: (storyExpressId: number | null) => void;
   followingUserId?: string | null;
   onStopFollowing?: () => void;
+  enableSelection?: boolean;
   enableNanoBanana?: boolean;
   nanoBananaPrompt?: string;
   nanoBananaPromptVersion?: number;
@@ -875,6 +881,7 @@ export const IfcViewer = ({
                       }
                   }}
                   selections={selections}
+                  enableSelection={enableSelection}
                   activeFollowUserId={followingUserId}
                   onActiveRemoteSelectionPropsChange={(props) => {
                     // Only mirror remote selection into the details box
