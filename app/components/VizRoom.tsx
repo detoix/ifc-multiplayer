@@ -6,16 +6,16 @@ import type { PresenceMap } from "@/app/lib/usePresence";
 
 const PROMPT_PRESETS = [
   {
-    id: "current",
-    label: "Default prompt ✨",
+    id: "christmas",
+    label: "Christmas prompt 🎄",
     initial:
-      "Enhance this architectural 3D scene into a high-quality, photorealistic render from the same camera angle. Keep all building geometry, shapes, and layout strictly unchanged—do not move, remove, or add any objects, and do not alter the composition or perspective. Add serene, natural surroundings, enrich colors, and improve lighting and materials while preserving the original structure exactly.",
+      "Enhance this architectural 3D scene into a high-quality, photorealistic Christmas render from the same camera angle. Keep all geometry and composition unchanged, but transform the environment into a festive winter setting with gentle snowfall, warm decorative lighting, subtle Christmas decorations, and a cozy evening atmosphere while preserving the original structure exactly.",
   },
   {
-    id: "winter",
-    label: "Winter prompt ❄️",
+    id: "current",
+    label: "Neutral prompt ✨",
     initial:
-      "Enhance this architectural 3D scene into a high-quality, photorealistic winter render from the same camera angle. Keep all geometry and composition unchanged, but transform the environment into a calm winter setting with soft snow, overcast sky, warm interior lighting, and subtle frost on exterior materials.",
+      "Enhance this architectural 3D scene into a high-quality, photorealistic render from the same camera angle. Keep all building geometry, shapes, and layout strictly unchanged—do not move, remove, or add any objects, and do not alter the composition or perspective. Add serene, natural surroundings, enrich colors, and improve lighting and materials while preserving the original structure exactly.",
   },
   {
     id: "spring",

@@ -17,7 +17,9 @@ const IfcModel = ({
   selections,
   activeFollowUserId,
   onActiveRemoteSelectionPropsChange,
-  onModelCenterChange
+  onModelCenterChange,
+  onModelLoaded,
+  onModelLoadError,
 }: { 
   url: string, 
   onStoriesLoaded: (stories: any[]) => void, 
@@ -26,7 +28,9 @@ const IfcModel = ({
   selections: SelectionMap,
   activeFollowUserId?: string | null,
   onActiveRemoteSelectionPropsChange?: (props: any | null) => void,
-  onModelCenterChange?: (center: [number, number, number]) => void
+  onModelCenterChange?: (center: [number, number, number]) => void,
+  onModelLoaded?: () => void,
+  onModelLoadError?: (error: unknown) => void,
 }) => {
   const [displayModel, setDisplayModel] = useState<THREE.Object3D | null>(null);
   const modelRef = useRef<any>(null);
@@ -82,6 +86,7 @@ const IfcModel = ({
         }
 
         setDisplayModel(model);
+        onModelLoaded?.();
 
         // Extract stories
         const ifcProject = await loader.ifcManager.getSpatialStructure(model.modelID);
@@ -128,6 +133,7 @@ const IfcModel = ({
 
       } catch (err) {
         console.error("IFC load error", err);
+        onModelLoadError?.(err);
       }
     };
 
@@ -597,8 +603,15 @@ export const IfcViewer = ({
   const [overlayImageUrl, setOverlayImageUrl] = useState<string | null>(null);
   const [isGeneratingOverlay, setIsGeneratingOverlay] = useState(false);
   const [idleCountdown, setIdleCountdown] = useState<number | null>(null);
+  const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const idleDeadlineRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setIsModelLoaded(false);
+    setModelError(null);
+  }, [fileUrl]);
 
   const clearIdleTimeout = useCallback(() => {
     if (idleTimeoutRef.current) {
@@ -687,6 +700,12 @@ export const IfcViewer = ({
       setOverlayImageUrl(null);
     }
 
+    // If a request was in-flight ("Sending view…"), treat this
+    // as a reset so the banner goes back to the idle / countdown state.
+    if (isGeneratingOverlay) {
+      setIsGeneratingOverlay(false);
+    }
+
     clearIdleTimeout();
 
     // Schedule a debounced idle check 3 seconds after the last change.
@@ -712,7 +731,7 @@ export const IfcViewer = ({
     idleTimeoutRef.current = setTimeout(() => {
       void handleCameraIdle(tokenAtSchedule);
     }, 3000);
-  }, [clearIdleTimeout, handleCameraIdle, overlayImageUrl, enableNanoBanana]);
+  }, [clearIdleTimeout, handleCameraIdle, overlayImageUrl, enableNanoBanana, isGeneratingOverlay]);
 
   const displayIdleSeconds =
     idleCountdown != null ? Math.max(0, Math.ceil(idleCountdown)) : null;
@@ -872,6 +891,13 @@ export const IfcViewer = ({
                   onModelCenterChange={(center) => {
                     setOrbitTarget(center);
                   }}
+                  onModelLoaded={() => {
+                    setIsModelLoaded(true);
+                    setModelError(null);
+                  }}
+                  onModelLoadError={() => {
+                    setModelError("Failed to load IFC model.");
+                  }}
               />
             </Stage>
           ) : null}
@@ -891,6 +917,52 @@ export const IfcViewer = ({
           target={orbitTarget ?? [0, 0, 0]}
         />
       </Canvas>
+
+      {/* Model loading spinner */}
+      {fileUrl && !isModelLoaded && !modelError && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 6,
+            pointerEvents: "none",
+            background: "radial-gradient(circle at 50% 40%, rgba(255,255,255,0.85), rgba(248,250,252,0.9))",
+          }}
+        >
+          <div
+            style={{
+              display: "inline-flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
+              padding: "12px 18px",
+              borderRadius: "8px",
+              background: "rgba(255,255,255,0.95)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 12px 30px rgba(15,23,42,0.15)",
+              color: "var(--text-muted)",
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            <span
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: "999px",
+                border: "2px solid rgba(148,163,184,0.4)",
+                borderTopColor: "var(--accent)",
+                animation: "spin 0.8s linear infinite",
+                display: "inline-block",
+              }}
+            />
+            <span>Loading model…</span>
+          </div>
+        </div>
+      )}
 
       {/* AI Render Overlay (Nano Banana Pro) */}
       {enableNanoBanana && overlayImageUrl && (
@@ -1101,6 +1173,34 @@ export const IfcViewer = ({
                     </option>
                 ))}
             </select>
+        </div>
+      )}
+
+      {modelError && fileUrl && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 8,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              background: "rgba(248,250,252,0.96)",
+              border: "1px solid #fecaca",
+              color: "#b91c1c",
+              fontSize: 13,
+              boxShadow: "0 10px 25px rgba(15,23,42,0.18)",
+            }}
+          >
+            {modelError}
+          </div>
         </div>
       )}
 
