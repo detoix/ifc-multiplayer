@@ -3,8 +3,57 @@ import { NextRequest, NextResponse } from "next/server";
 const MODEL_NAME = "gemini-3-pro-image-preview";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 
+// Very simple in-memory, per-IP render counter.
+// This resets whenever the server restarts and is only
+// meant as a basic safety valve, not a strong quota system.
+const MAX_RENDERS_PER_IP = 10;
+const ipUsage = new Map<string, number>();
+
+function getClientKey(request: NextRequest): string {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const firstIp = forwardedFor.split(",")[0]?.trim();
+    if (firstIp) return firstIp;
+  }
+  const realIp = request.headers.get("x-real-ip");
+  if (realIp) return realIp;
+  // Fallback: this will group all "unknown" users together,
+  // but that's acceptable for a very basic limiter.
+  return "unknown";
+}
+
+export async function GET(request: NextRequest) {
+  const key = getClientKey(request);
+  const used = ipUsage.get(key) ?? 0;
+  const remaining = Math.max(0, MAX_RENDERS_PER_IP - used);
+
+  return NextResponse.json({
+    limit: MAX_RENDERS_PER_IP,
+    used,
+    remaining,
+  });
+}
+
 export async function POST(request: NextRequest) {
   try {
+    const key = getClientKey(request);
+    const usedSoFar = ipUsage.get(key) ?? 0;
+    const remainingBefore = Math.max(0, MAX_RENDERS_PER_IP - usedSoFar);
+
+    if (remainingBefore <= 0) {
+      console.warn("[nano-banana] Render limit reached for key", key);
+      return NextResponse.json(
+        {
+          error:
+            "Render limit reached for this browser. Please come back later or restart the server.",
+          limit: MAX_RENDERS_PER_IP,
+          used: usedSoFar,
+          remaining: 0,
+        },
+        { status: 429 }
+      );
+    }
+
     const { imageData, prompt } = (await request.json()) as {
       imageData?: string;
       prompt?: string;
@@ -115,7 +164,16 @@ export async function POST(request: NextRequest) {
     const outBase64: string = imagePart.inlineData.data;
     const dataUri = `data:${outMimeType};base64,${outBase64}`;
 
-    return NextResponse.json({ imageUrl: dataUri });
+    const newUsed = usedSoFar + 1;
+    ipUsage.set(key, newUsed);
+    const remainingAfter = Math.max(0, MAX_RENDERS_PER_IP - newUsed);
+
+    return NextResponse.json({
+      imageUrl: dataUri,
+      limit: MAX_RENDERS_PER_IP,
+      used: newUsed,
+      remaining: remainingAfter,
+    });
   } catch (error) {
     console.error("[nano-banana] Failed to generate image with Gemini", error);
     return NextResponse.json(

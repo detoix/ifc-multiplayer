@@ -611,6 +611,8 @@ export const IfcViewer = ({
   const [idleCountdown, setIdleCountdown] = useState<number | null>(null);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [nanoBananaRemaining, setNanoBananaRemaining] = useState<number | null>(null);
+  const [nanoBananaLimit, setNanoBananaLimit] = useState<number | null>(null);
   const idleDeadlineRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -618,6 +620,35 @@ export const IfcViewer = ({
     setIsModelLoaded(false);
     setModelError(null);
   }, [fileUrl]);
+
+  // Fetch initial Nano Banana limit/remaining on mount so the banner
+  // can show how many renders are available even before the first call.
+  useEffect(() => {
+    if (!enableNanoBanana) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/nano-banana");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (typeof (data as any).limit === "number") {
+          setNanoBananaLimit((data as any).limit);
+        }
+        if (typeof (data as any).remaining === "number") {
+          setNanoBananaRemaining((data as any).remaining);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enableNanoBanana]);
 
   const clearIdleTimeout = useCallback(() => {
     if (idleTimeoutRef.current) {
@@ -671,12 +702,31 @@ export const IfcViewer = ({
         });
 
         if (!response.ok) {
-          console.error("Nano Banana Pro API error", await response.text());
+          const errorText = await response.text();
+          console.error("Nano Banana Pro API error", errorText);
+          try {
+            const parsed = JSON.parse(errorText);
+            if (typeof parsed.remaining === "number") {
+              setNanoBananaRemaining(parsed.remaining);
+            }
+            if (typeof parsed.limit === "number") {
+              setNanoBananaLimit(parsed.limit);
+            }
+          } catch {
+            // ignore JSON parse errors
+          }
           return;
         }
 
         const data = await response.json();
         const imageUrl = data?.imageUrl as string | undefined;
+
+        if (typeof (data as any)?.remaining === "number") {
+          setNanoBananaRemaining((data as any).remaining);
+        }
+        if (typeof (data as any)?.limit === "number") {
+          setNanoBananaLimit((data as any).limit);
+        }
 
         // Camera may have moved while the request was in flight.
         if (!imageUrl || movementTokenRef.current !== tokenAtSchedule) {
@@ -1043,11 +1093,27 @@ export const IfcViewer = ({
                     fontSize: 20,
                     minWidth: 24,
                     textAlign: "center",
+                    display: "inline-block",
+                    marginRight: 6,
                   }}
                 >
                   {displayIdleSeconds}
                 </span>
                 <span>Hold camera still to capture this view for AI render…</span>
+                {nanoBananaLimit != null && (
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      marginTop: 2,
+                    }}
+                  >
+                    {nanoBananaRemaining != null
+                      ? `${nanoBananaRemaining}/${nanoBananaLimit} AI renders left`
+                      : `Up to ${nanoBananaLimit} AI renders per browser`}
+                  </span>
+                )}
               </>
             ) : isGeneratingOverlay ? (
               <>
@@ -1064,11 +1130,57 @@ export const IfcViewer = ({
                   }}
                 />
                 <span>Sending view to AI renderer…</span>
+                {nanoBananaLimit != null && (
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      marginTop: 2,
+                    }}
+                  >
+                    {nanoBananaRemaining != null
+                      ? `${nanoBananaRemaining}/${nanoBananaLimit} AI renders left`
+                      : `Up to ${nanoBananaLimit} AI renders per browser`}
+                  </span>
+                )}
               </>
             ) : overlayImageUrl ? (
-              <span>AI render ready – move camera to reset.</span>
+              <>
+                <span>AI render ready – move camera to reset.</span>
+                {nanoBananaLimit != null && (
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      marginTop: 2,
+                    }}
+                  >
+                    {nanoBananaRemaining != null
+                      ? `${nanoBananaRemaining}/${nanoBananaLimit} AI renders left`
+                      : `Up to ${nanoBananaLimit} AI renders per browser`}
+                  </span>
+                )}
+              </>
             ) : (
-              <span>Move the camera, then hold still for 3 seconds to generate an AI render.</span>
+              <>
+                <span>Move the camera, then hold still for 3 seconds to generate an AI render.</span>
+                {nanoBananaLimit != null && (
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      marginTop: 2,
+                    }}
+                  >
+                    {nanoBananaRemaining != null
+                      ? `${nanoBananaRemaining}/${nanoBananaLimit} AI renders left`
+                      : `Up to ${nanoBananaLimit} AI renders per browser`}
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
